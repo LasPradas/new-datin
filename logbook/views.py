@@ -154,9 +154,28 @@ def print_log_detail(request, log_id):
 SIRINE_RECORDED_SINCE = datetime.date(2026, 10, 3)
 
 
+BULAN_INDO = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+              "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+
+
+def _ola_status(val):
+    """Sama dengan OLA seismik/akselerograf: Hidup >75%, Gap 0<x<=75%, Mati 0%."""
+    if val is None:
+        return 'kosong'
+    if val > 75:
+        return 'hidup'
+    if val > 0:
+        return 'gap'
+    return 'mati'
+
+
 @login_required
 def sirine_availability(request):
-    """Tabel log sirene ON dan OFF per bulan, dari isian logbook."""
+    """SLA/OLA sirene per bulan dari isian logbook, plus tabel log ON dan OFF.
+
+    SLA harian = persentase log hari itu yang mencatat sirine ON. Hari tanpa log
+    (atau sebelum SIRINE_RECORDED_SINCE) tidak punya nilai dan tidak ikut rata-rata.
+    """
     today = timezone.now().astimezone(zoneinfo.ZoneInfo("Asia/Jayapura")).date()
     try:
         month = int(request.GET.get('month', today.month))
@@ -165,23 +184,46 @@ def sirine_availability(request):
     except ValueError:
         month, year = today.month, today.year
 
+    num_days = calendar.monthrange(year, month)[1]
     first = datetime.date(year, month, 1)
-    last = datetime.date(year, month, calendar.monthrange(year, month)[1])
-    logs = (Logbook.objects
-            .filter(tanggal__range=[max(first, SIRINE_RECORDED_SINCE), last])
-            .select_related('petugas')
-            .order_by('tanggal', 'waktu_dibuat'))
+    last = datetime.date(year, month, num_days)
+    logs = list(Logbook.objects
+                .filter(tanggal__range=[max(first, SIRINE_RECORDED_SINCE), last])
+                .select_related('petugas')
+                .order_by('tanggal', 'waktu_dibuat'))
     logs_on = [log for log in logs if log.sirine == 'ON']
     logs_off = [log for log in logs if log.sirine == 'OFF']
-    total = len(logs_on) + len(logs_off)
+    total = len(logs)
+
+    per_day = {}
+    for log in logs:
+        counts = per_day.setdefault(log.tanggal.day, [0, 0])   # [on, total]
+        counts[1] += 1
+        if log.sirine == 'ON':
+            counts[0] += 1
+
+    hari = []
+    for d in range(1, num_days + 1):
+        on, n = per_day.get(d, (0, 0))
+        val = round(100 * on / n, 1) if n else None
+        hari.append({'day_num': d, 'val': val, 'on': on, 'total': n,
+                     'status': _ola_status(val)})
+    vals = [h['val'] for h in hari if h['val'] is not None]
+    avg = round(sum(vals) / len(vals), 2) if vals else None
 
     return render(request, 'logbook/sirine_availability.html', {
-        'page_title': 'Rekapitulasi Status Sirine',
+        'page_title': 'Rekapitulasi Persentasi Hasil Monitoring Ketersediaan Sirine',
+        'sensor_name': 'Sirine',
         'selected_month': month,
         'selected_year': year,
-        'month_label': first,
+        'month_name': BULAN_INDO[month],
         'months_range': range(1, 13),
         'years_range': range(SIRINE_RECORDED_SINCE.year, today.year + 2),
+        'list_tanggal': range(1, num_days + 1),
+        'hari': hari,
+        'avg_row': avg,
+        'days_with_data': len(vals),
+        'days_hidup': sum(1 for h in hari if h['status'] == 'hidup'),
         'logs_on': logs_on,
         'logs_off': logs_off,
         'total': total,

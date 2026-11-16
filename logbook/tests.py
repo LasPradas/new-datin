@@ -543,6 +543,24 @@ class SirineAvailabilityTest(TestCase):
         self.assertEqual(resp.context['total'], 2)
         self.assertEqual(resp.context['pct_on'], 50.0)
 
+    def test_daily_sla_and_ola(self):
+        # 7 Okt: 2 dari 3 log ON -> 66.7% (gap); 5 Okt: 100% (hidup); 6 Okt: 0% (mati)
+        for sirine in ('ON', 'ON', 'OFF'):
+            make_logbook(self.user, tanggal=datetime.date(2026, 10, 7), sirine=sirine)
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url, {'month': 10, 'year': 2026})
+        hari = {h['day_num']: h for h in resp.context['hari']}
+        self.assertEqual(len(hari), 31)
+        self.assertEqual((hari[5]['val'], hari[5]['status']), (100.0, 'hidup'))
+        self.assertEqual((hari[6]['val'], hari[6]['status']), (0.0, 'mati'))
+        self.assertEqual((hari[7]['val'], hari[7]['status']), (66.7, 'gap'))
+        # 1 Okt sebelum pencatatan sirine -> kosong, tidak ikut rata-rata
+        self.assertEqual((hari[1]['val'], hari[1]['status']), (None, 'kosong'))
+        self.assertEqual(resp.context['days_with_data'], 3)
+        self.assertEqual(resp.context['days_hidup'], 1)
+        self.assertEqual(resp.context['avg_row'], round((100 + 0 + 66.7) / 3, 2))
+        self.assertContains(resp, 'availabilityChart')
+
     def test_month_before_recording(self):
         self.client.force_login(self.user)
         resp = self.client.get(self.url, {'month': 9, 'year': 2026})

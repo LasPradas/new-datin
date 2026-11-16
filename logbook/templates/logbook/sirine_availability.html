@@ -1,114 +1,280 @@
 {% extends "base.html" %}
-{% load tz %}
 
 {% block content %}
 <style>
-    .custom-filter-box {
-        background-color: #ffffff;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .custom-select {
-        padding: 5px 10px;
-        border: 1px solid #999;
-        border-radius: 4px;
-        background-color: white;
-        font-size: 13px;
-        min-width: 90px;
-        color: #333;
-    }
-    .custom-btn {
-        background-color: #4f46e5;
-        color: white;
-        border: none;
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-size: 13px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-    .stat-card { background: #fff; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-    .stat-label { font-size: 12px; color: #6b7280; font-weight: 600; }
-    .stat-value { font-size: 24px; font-weight: 700; color: #111827; }
-    .sirine-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .sirine-table th { background: #1f2937; color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
-    .sirine-table td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-    .sirine-table tr:last-child td { border-bottom: none; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
-    .badge-on { background: #059669; }
-    .badge-off { background: #dc2626; }
+  /* Sama dengan repository/data_availability_query.html (Seismik/Akselerograf) */
+  .matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  .matrix-table th, .matrix-table td { text-align: center; border: 1px solid #ccc; padding: 0; height: 22px; font-size: 11px; }
+  .col-day { min-width: 24px; max-width: 24px; width: 24px; }
+  .sticky-col { position:sticky; left:0; z-index:20; border-right:2px solid #9ca3af; }
+  thead th.sticky-col { background-color:#1f2937; color:white; z-index:30; }
+  tbody td.sticky-col { background-color:#f9fafb; color:#111827; z-index:20; }
+  .sla-cell { font-weight:600; color:#1f2937; }
+
+  .tab-bar { display:flex; border-bottom:2px solid #e5e7eb; margin-bottom:0; }
+  .tab-btn {
+    padding:8px 22px; font-size:13px; font-weight:600; letter-spacing:.04em;
+    border:none; background:none; cursor:pointer; color:#6b7280;
+    border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .15s;
+  }
+  .tab-btn:hover { color:#1f2937; }
+  .tab-btn.active { color:#4f46e5; border-bottom-color:#4f46e5; }
+
+  .filter-box { background:#fff; padding:8px 14px; border:1px solid #d1d5db; border-radius:8px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .filter-select { padding:4px 8px; border:1px solid #9ca3af; border-radius:4px; font-size:13px; color:#374151; background:white; }
+  .filter-btn { background:#4f46e5; color:white; border:none; padding:5px 12px; border-radius:4px; font-size:13px; font-weight:600; cursor:pointer; }
+
+  .stat-card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; }
+  .stat-label { font-size:12px; color:#6b7280; font-weight:600; }
+  .stat-value { font-size:22px; font-weight:700; color:#111827; }
+  .sirine-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .sirine-table th { background:#1f2937; color:#fff; text-align:left; padding:8px 10px; font-weight:600; }
+  .sirine-table td { padding:7px 10px; border-bottom:1px solid #e5e7eb; vertical-align:top; }
+  .sirine-table tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; color:#fff; }
+  .badge-on { background:#059669; }
+  .badge-off { background:#dc2626; }
 </style>
 
 <div class="flex h-screen bg-gray-100">
   {% include 'partials/_sidebar.html' %}
-
   <div class="flex-1 flex flex-col overflow-hidden">
     {% include 'partials/_topbar.html' %}
 
     <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4">
-        <div class="container mx-auto">
+      <div class="container mx-auto">
 
-            <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
-                <div>
-                    <h1 class="text-xl font-bold text-gray-800">{{ page_title }}</h1>
-                    <p class="text-sm text-gray-500">{{ month_label|date:"F Y" }} &middot; dari isian Logbook</p>
-                </div>
+        <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+          <h1 class="text-xl font-bold text-gray-800">{{ page_title }}</h1>
 
-                <form method="get" class="custom-filter-box">
-                    <div>
-                        <span class="text-xs font-bold text-gray-600">Bulan:</span>
-                        <select name="month" class="custom-select">
-                            {% for m in months_range %}
-                            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <span class="text-xs font-bold text-gray-600">Tahun:</span>
-                        <select name="year" class="custom-select">
-                            {% for y in years_range %}
-                            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <button type="submit" class="custom-btn">Tampilkan</button>
-                </form>
-            </div>
-
-            {% if before_recording %}
-            <div class="bg-white shadow rounded-lg p-6 mb-4 text-sm text-gray-600">
-                Status sirine baru dicatat di logbook sejak {{ recorded_since|date:"d F Y" }}. Pilih bulan setelahnya.
-            </div>
-            {% else %}
-
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <div class="stat-card"><div class="stat-label">Total Log</div><div class="stat-value">{{ total }}</div></div>
-                <div class="stat-card"><div class="stat-label">Sirine ON</div><div class="stat-value" style="color:#059669;">{{ logs_on|length }}</div></div>
-                <div class="stat-card"><div class="stat-label">Sirine OFF</div><div class="stat-value" style="color:#dc2626;">{{ logs_off|length }}</div></div>
-                <div class="stat-card"><div class="stat-label">Persentase ON</div><div class="stat-value">{% if pct_on is not None %}{{ pct_on }}%{% else %}&mdash;{% endif %}</div></div>
-            </div>
-
-            {% with title="Sirine OFF" logs=logs_off badge="badge-off" label="OFF" %}
-            {% include "logbook/_sirine_table.html" %}
-            {% endwith %}
-            {% with title="Sirine ON" logs=logs_on badge="badge-on" label="ON" %}
-            {% include "logbook/_sirine_table.html" %}
-            {% endwith %}
-
-            {% endif %}
-
-            <p class="text-xs text-gray-500 italic mb-6">
-                * Waktu dalam WIT (UTC+9). Status sirine dicatat di logbook sejak {{ recorded_since|date:"d F Y" }};
-                log sebelum tanggal itu tidak dihitung.
-            </p>
+          <form method="get" class="filter-box">
+            <input type="hidden" name="tab" id="hidden-tab" value="{{ request.GET.tab|default:'sla' }}">
+            <span class="text-xs font-bold text-gray-600">Bulan:</span>
+            <select name="month" class="filter-select">
+              {% for m in months_range %}
+                <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+            <span class="text-xs font-bold text-gray-600">Tahun:</span>
+            <select name="year" class="filter-select">
+              {% for y in years_range %}
+                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="filter-btn">Tampilkan</button>
+          </form>
         </div>
+
+        {% if before_recording %}
+        <div class="bg-white shadow rounded-lg p-6 mb-4 text-sm text-gray-600">
+          Status sirine baru dicatat di logbook sejak {{ recorded_since|date:"d/m/Y" }}. Pilih bulan setelahnya.
+        </div>
+        {% else %}
+
+        <div class="tab-bar mb-0 bg-white rounded-t-lg px-4 pt-3 shadow-sm">
+          <button class="tab-btn {% if request.GET.tab != 'ola' and request.GET.tab != 'log' %}active{% endif %}" onclick="switchTab('sla', this)">SLA</button>
+          <button class="tab-btn {% if request.GET.tab == 'ola' %}active{% endif %}" onclick="switchTab('ola', this)">OLA</button>
+          <button class="tab-btn {% if request.GET.tab == 'log' %}active{% endif %}" onclick="switchTab('log', this)">Log ON/OFF</button>
+        </div>
+
+        <!-- TAB 1 – SLA -->
+        <div id="panel-sla" class="tab-panel bg-white shadow rounded-b-lg rounded-tr-lg p-0 mb-4"
+             {% if request.GET.tab == 'ola' or request.GET.tab == 'log' %}style="display:none"{% endif %}>
+          <div class="overflow-x-auto p-1">
+            <table class="matrix-table">
+              <thead class="bg-gray-800 text-white">
+                <tr>
+                  <th class="sticky-col py-1" style="width:30px;">No</th>
+                  <th class="sticky-col py-1" style="left:30px;width:60px;">Kode</th>
+                  {% for d in list_tanggal %}<th class="col-day">{{ d }}</th>{% endfor %}
+                  <th class="bg-gray-700" style="width:40px;">Avg</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white">
+                <tr>
+                  <td class="sticky-col font-mono">1</td>
+                  <td class="sticky-col font-bold" style="left:30px;text-align:left;padding-left:4px;">Sirine</td>
+                  {% for day in hari %}
+                  {% if day.val is None %}
+                  <td class="sla-cell" style="color:#9ca3af;" title="Tidak ada log">&ndash;</td>
+                  {% else %}
+                  <td class="sla-cell" data-val="{{ day.val }}" title="{{ day.on }} dari {{ day.total }} log ON">{{ day.val|floatformat:0 }}</td>
+                  {% endif %}
+                  {% endfor %}
+                  <td class="font-bold bg-gray-100">{% if avg_row is not None %}{{ avg_row|floatformat:0 }}{% else %}&ndash;{% endif %}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mx-3 mb-3 text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-200">
+            <p class="font-bold mb-1">Keterangan Warna:</p>
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex items-center gap-1"><div style="width:12px;height:12px;background:#f87171;border:1px solid #999;"></div>(0–24%)</div>
+              <div class="flex items-center gap-1"><div style="width:12px;height:12px;background:#fb923c;border:1px solid #999;"></div>(25–49%)</div>
+              <div class="flex items-center gap-1"><div style="width:12px;height:12px;background:#facc15;border:1px solid #999;"></div>(50–80%)</div>
+              <div class="flex items-center gap-1"><div style="width:12px;height:12px;background:#4ade80;border:1px solid #999;"></div>(&gt;80%)</div>
+            </div>
+            <p class="mt-1 italic">* Nilai harian = persentase log hari itu yang mencatat sirine ON. &ndash; = tidak ada log (tidak ikut rata-rata).
+              Data diambil dari Logbook; ubah status lewat Edit pada Logbook.</p>
+          </div>
+
+          <div class="mx-3 mb-4 border border-gray-200 rounded p-3">
+            <h3 class="text-base font-bold text-gray-800 mb-3">SLA Harian {{ sensor_name }} — {{ month_name }} {{ selected_year }}
+              {% if avg_row is not None %}<span class="text-sm font-semibold text-gray-500">(rata-rata {{ avg_row|floatformat:1 }}%)</span>{% endif %}</h3>
+            <div style="position:relative;height:280px;width:100%;">
+              <canvas id="availabilityChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2 – OLA -->
+        <div id="panel-ola" class="tab-panel bg-white shadow rounded-b-lg rounded-tr-lg p-0 mb-4"
+             {% if request.GET.tab != 'ola' %}style="display:none"{% endif %}>
+          <div class="flex items-center justify-between flex-wrap gap-2 px-4 py-3 border-b">
+            <h2 class="text-base font-bold text-gray-800">Status Kondisi Peralatan {{ sensor_name }} — {{ month_name }} {{ selected_year }}</h2>
+            <div class="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
+              <span class="flex items-center gap-1"><span style="display:inline-block;width:12px;height:12px;background:#4ade80;border:1px solid #999;"></span> Hidup (&gt;75%)</span>
+              <span class="flex items-center gap-1"><span style="display:inline-block;width:12px;height:12px;background:#facc15;border:1px solid #999;"></span> Gap (0%–75%)</span>
+              <span class="flex items-center gap-1"><span style="display:inline-block;width:12px;height:12px;background:#f87171;border:1px solid #999;"></span> Mati (0%)</span>
+              <span class="flex items-center gap-1"><span style="display:inline-block;width:12px;height:12px;background:#e5e7eb;border:1px solid #999;"></span> Tidak ada log</span>
+            </div>
+          </div>
+          <div class="overflow-x-auto p-1">
+            <table class="matrix-table">
+              <thead class="bg-gray-800 text-white">
+                <tr>
+                  <th class="sticky-col py-1" style="width:30px;">No</th>
+                  <th class="sticky-col py-1" style="left:30px;width:60px;">Kode</th>
+                  {% for d in list_tanggal %}<th class="col-day">{{ d }}</th>{% endfor %}
+                  <th class="bg-gray-700" style="width:50px;">Hidup</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white">
+                <tr>
+                  <td class="sticky-col font-mono">1</td>
+                  <td class="sticky-col font-bold" style="left:30px;text-align:left;padding-left:4px;">Sirine</td>
+                  {% for day in hari %}
+                  {% if day.status == 'hidup' %}
+                  <td style="background-color:#4ade80;color:#166534;font-size:8px;font-weight:700;">H</td>
+                  {% elif day.status == 'gap' %}
+                  <td style="background-color:#facc15;color:#713f12;font-size:8px;font-weight:700;">G</td>
+                  {% elif day.status == 'mati' %}
+                  <td style="background-color:#f87171;color:#7f1d1d;font-size:8px;font-weight:700;">M</td>
+                  {% else %}
+                  <td style="background-color:#e5e7eb;color:#6b7280;font-size:8px;">&ndash;</td>
+                  {% endif %}
+                  {% endfor %}
+                  <td class="font-bold bg-gray-100" style="font-size:11px;">{{ days_hidup }}/{{ days_with_data }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="px-4 pb-3 text-xs text-gray-500 italic">* Hidup = hari dengan status H dari hari yang memiliki log.</p>
+        </div>
+
+        <!-- TAB 3 – Log ON/OFF -->
+        <div id="panel-log" class="tab-panel bg-white shadow rounded-b-lg rounded-tr-lg p-4 mb-4"
+             {% if request.GET.tab != 'log' %}style="display:none"{% endif %}>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="stat-card"><div class="stat-label">Total Log</div><div class="stat-value">{{ total }}</div></div>
+            <div class="stat-card"><div class="stat-label">Sirine ON</div><div class="stat-value" style="color:#059669;">{{ logs_on|length }}</div></div>
+            <div class="stat-card"><div class="stat-label">Sirine OFF</div><div class="stat-value" style="color:#dc2626;">{{ logs_off|length }}</div></div>
+            <div class="stat-card"><div class="stat-label">Persentase ON</div><div class="stat-value">{% if pct_on is not None %}{{ pct_on }}%{% else %}&mdash;{% endif %}</div></div>
+          </div>
+          {% with title="Sirine OFF" logs=logs_off badge="badge-off" label="OFF" %}
+          {% include "logbook/_sirine_table.html" %}
+          {% endwith %}
+          {% with title="Sirine ON" logs=logs_on badge="badge-on" label="ON" %}
+          {% include "logbook/_sirine_table.html" %}
+          {% endwith %}
+        </div>
+
+        {% endif %}
+
+        <p class="text-xs text-gray-500 italic mb-6">
+          * Waktu dalam WIT (UTC+9). Status sirine dicatat di logbook sejak {{ recorded_since|date:"d/m/Y" }};
+          log sebelum tanggal itu tidak dihitung.
+        </p>
+      </div>
     </main>
   </div>
 </div>
+
+{% if not before_recording %}
+{{ hari|json_script:"sirine-hari" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script>
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).style.display = '';
+  btn.classList.add('active');
+  document.getElementById('hidden-tab').value = name;
+  if (name === 'sla' && window.sirineChart) window.sirineChart.resize();
+}
+
+// Warna sama dengan halaman SLA Seismik/Akselerograf
+function getChartColor(v) {
+  if (v > 80) return '#4ade80';
+  if (v >= 50) return '#facc15';
+  if (v >= 25) return '#fb923c';
+  return '#f87171';
+}
+function getChartBorderColor(v) {
+  if (v > 80) return '#22c55e';
+  if (v >= 50) return '#eab308';
+  if (v >= 25) return '#f97316';
+  return '#ef4444';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.sla-cell[data-val]').forEach(td => {
+    const v = parseFloat(td.dataset.val);
+    td.style.backgroundColor = getChartColor(v);
+    if (v < 25) td.style.color = 'white';
+  });
+
+  const hari = JSON.parse(document.getElementById('sirine-hari').textContent);
+  const vals = hari.map(h => h.val);
+  Chart.register(ChartDataLabels);
+  window.sirineChart = new Chart(document.getElementById('availabilityChart'), {
+    type: 'bar',
+    data: {
+      labels: hari.map(h => h.day_num),
+      datasets: [{
+        label: 'Sirine ON (%)',
+        data: vals,
+        backgroundColor: vals.map(v => v === null ? 'transparent' : getChartColor(v)),
+        borderColor: vals.map(v => v === null ? 'transparent' : getChartBorderColor(v)),
+        borderWidth: 1, barPercentage: 0.8,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 30 } },
+      scales: {
+        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } },
+        x: { title: { display: true, text: 'Tanggal' } }
+      },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'end', align: 'end', offset: -4, color: '#333',
+          font: { weight: 'bold', size: 10 },
+          formatter: v => v === null ? '' : Math.round(v),
+        },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const h = hari[ctx.dataIndex];
+            return h.val === null ? 'Tidak ada log' : `${h.val}% (${h.on}/${h.total} log ON)`;
+          }
+        } }
+      }
+    }
+  });
+});
+</script>
+{% endif %}
 {% endblock %}
