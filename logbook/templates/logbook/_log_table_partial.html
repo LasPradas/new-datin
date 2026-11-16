@@ -13,6 +13,9 @@
                 Diganti: {% for p in log.petugas_selanjutnya.all %}{{ p.username|title }}{% if not forloop.last %}, {% endif %}{% endfor %}
             {% endif %}
         </div>
+        {% with off=log.off_instruments %}{% if off %}
+        <div style="font-size: 0.75rem; color: #FF3B30; font-weight: 600;">OFF: {{ off|join:", " }}</div>
+        {% endif %}{% endwith %}
     </td>
     <td style="text-align: center;">
         <a href="{% url 'logbook:edit_log' log.id %}" class="btn-action btn-edit">Edit</a>

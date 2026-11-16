@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.utils import timezone
 import zoneinfo
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q
 from .models import Logbook
 from .forms import LogbookForm
 from .utils import send_telegram_log
@@ -19,6 +20,12 @@ from .sirine import SirineClient, SirineError, SirineSafetyError, SirineAuthErro
 logger = logging.getLogger(__name__)
 
 from .access import client_ip, is_office_request
+
+# Field status ON/OFF di model Logbook yang bisa dipakai sebagai filter pencarian
+INSTRUMENT_FIELDS = [
+    (f, Logbook._meta.get_field(f).verbose_name)
+    for f in Logbook.INSTRUMENT_FIELDS
+]
 
 
 def index(request):
@@ -80,6 +87,22 @@ def index(request):
     end_date = request.GET.get('end_date', str(today_jayapura))
     logs_list = Logbook.objects.all().order_by('-waktu_dibuat')
     if start_date and end_date: logs_list = logs_list.filter(tanggal__range=[start_date, end_date])
+
+    # Filter instrumen: hanya nama field dari INSTRUMENT_FIELDS yang diterima
+    instrument = request.GET.get('instrument', '')
+    instrument_status = request.GET.get('instrument_status', '')
+    if instrument not in dict(INSTRUMENT_FIELDS): instrument = ''
+    if instrument_status not in ('ON', 'OFF'): instrument_status = ''
+    if instrument and instrument_status:
+        logs_list = logs_list.filter(**{instrument: instrument_status})
+    elif instrument_status:
+        # Semua instrumen: ON = semua menyala, OFF = minimal satu mati
+        if instrument_status == 'ON':
+            logs_list = logs_list.filter(**{f: 'ON' for f, _ in INSTRUMENT_FIELDS})
+        else:
+            q = Q()
+            for f, _ in INSTRUMENT_FIELDS: q |= Q(**{f: 'OFF'})
+            logs_list = logs_list.filter(q)
     
     paginator = Paginator(logs_list, 10)
     page = request.GET.get('page', 1)
@@ -92,6 +115,8 @@ def index(request):
     context = {
         'form': form, 'page_obj': page_obj, 'today_str': str(today_jayapura),
         'start_date': start_date, 'end_date': end_date, 'notif_rutin': notif_rutin,
+        'instrument_fields': INSTRUMENT_FIELDS, 'instrument': instrument,
+        'instrument_status': instrument_status,
         'hv_today': hv_today, 'hv_label': hv_label, 'show_hv_fields': show_hv_fields, 
         'is_authorized': True, # Pastikan ini True untuk user kantor
     }

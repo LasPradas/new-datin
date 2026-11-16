@@ -477,3 +477,44 @@ class OfficeAccessTest(TestCase):
         resp = self.client.post(reverse('logbook:sirine_check'),
                                 HTTP_X_REAL_IP=self.CF_EDGE, HTTP_CF_CONNECTING_IP='8.8.8.8')
         self.assertEqual(resp.status_code, 403)
+
+
+class LogbookInstrumentFilterTest(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        day = dict(tanggal=datetime.date(2024, 3, 1))
+        all_on = dict(petir='ON', proton='ON', sirine='ON')
+        self.log_on = make_logbook(self.user, **day, **all_on)
+        self.log_lemi_off = make_logbook(self.user, **day, **{**all_on, 'lemi': 'OFF'})
+        self.log_petir_off = make_logbook(self.user, **day, **{**all_on, 'petir': 'OFF'})
+
+    def _ids(self, **params):
+        params = {'start_date': '2024-03-01', 'end_date': '2024-03-01', **params}
+        resp = self.client.get(reverse('logbook:logbook_list'), params,
+                               REMOTE_ADDR='127.0.0.1',
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(resp.status_code, 200)
+        return {log.id for log in resp.context['page_obj']}
+
+    def test_no_instrument_filter_returns_all(self):
+        self.assertEqual(self._ids(), {self.log_on.id, self.log_lemi_off.id, self.log_petir_off.id})
+
+    def test_single_instrument_off(self):
+        self.assertEqual(self._ids(instrument='lemi', instrument_status='OFF'), {self.log_lemi_off.id})
+
+    def test_single_instrument_on(self):
+        self.assertEqual(self._ids(instrument='lemi', instrument_status='ON'),
+                         {self.log_on.id, self.log_petir_off.id})
+
+    def test_any_instrument_off(self):
+        self.assertEqual(self._ids(instrument_status='OFF'), {self.log_lemi_off.id, self.log_petir_off.id})
+
+    def test_all_instruments_on(self):
+        self.assertEqual(self._ids(instrument_status='ON'), {self.log_on.id})
+
+    def test_unknown_field_is_ignored(self):
+        self.assertEqual(len(self._ids(instrument='petugas__password', instrument_status='OFF')), 2)
+
+    def test_off_instruments_property(self):
+        self.assertEqual(self.log_lemi_off.off_instruments, ['LEMI'])
+        self.assertEqual(self.log_on.off_instruments, [])

@@ -71,6 +71,14 @@ class Logbook(models.Model):
         verbose_name = "Logbook Harian"
         verbose_name_plural = "Logbook Harian"
 
+    INSTRUMENT_FIELDS = ('seiscomp_seismik', 'seiscomp_accelero', 'esdx', 'petir', 'lemi', 'proton', 'sirine')
+
+    @property
+    def off_instruments(self):
+        """Nama instrumen yang berstatus OFF pada log ini."""
+        return [self._meta.get_field(f).verbose_name for f in self.INSTRUMENT_FIELDS
+                if getattr(self, f) == 'OFF']
+
     def __str__(self):
         return f"Log {self.tanggal} - {self.shift}"
 

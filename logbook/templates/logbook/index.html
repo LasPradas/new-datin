@@ -314,6 +314,17 @@
                             <input type="date" id="start_date" value="{{ start_date }}" class="form-control" style="width: 140px; padding: 8px;">
                             <span style="color: var(--ios-label);">→</span>
                             <input type="date" id="end_date" value="{{ end_date }}" class="form-control" style="width: 140px; padding: 8px;">
+                            <select id="instrument" class="form-control" style="width: 170px; padding: 8px;">
+                                <option value="">Semua Instrumen</option>
+                                {% for value, label in instrument_fields %}
+                                <option value="{{ value }}" {% if value == instrument %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <select id="instrument_status" class="form-control" style="width: 110px; padding: 8px;">
+                                <option value="">Status</option>
+                                <option value="ON" {% if instrument_status == 'ON' %}selected{% endif %}>ON</option>
+                                <option value="OFF" {% if instrument_status == 'OFF' %}selected{% endif %}>OFF</option>
+                            </select>
                             <button onclick="fetchLogs(1)" class="btn-cari">Cari</button>
                         </div>
                         <span style="font-size: 0.7rem; color: var(--ios-label); font-weight: 700;">WIT (UTC+9)</span>
@@ -442,13 +453,18 @@
 
         // --- AJAX Fetch Data ---
         window.fetchLogs = function(page = 1) {
-            const start = document.getElementById('start_date').value, 
-                  end = document.getElementById('end_date').value;
+            const params = new URLSearchParams({
+                start_date: document.getElementById('start_date').value,
+                end_date: document.getElementById('end_date').value,
+                instrument: document.getElementById('instrument').value,
+                instrument_status: document.getElementById('instrument_status').value,
+                page: page,
+            });
             const target = document.getElementById('log-table-body');
             
             if (target) {
                 target.style.opacity = '0.5';
-                fetch(`?start_date=${start}&end_date=${end}&page=${page}`, { 
+                fetch(`?${params}`, { 
                     headers: {'x-requested-with': 'XMLHttpRequest'} 
                 })
                 .then(r => r.text())
