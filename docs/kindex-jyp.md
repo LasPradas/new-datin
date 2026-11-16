@@ -81,6 +81,15 @@ Telegram lewat `/magnet/api/instrument/status/`), karena penyebabnya bukan progr
 - Log: `C:\lemi_watchdog\lemi_watchdog.log`. Selisih jam LEMI dan PC di atas 120 detik dicatat tiap jam
   sebagai `CLOCK WARNING`; peringatan ini tidak memicu restart.
 
+## Penggabungan berkas harian (PC .105)
+
+Setiap `lemi018.exe` dimulai, ia membuka berkas baru. `upload.bat` menyalin tiap potongan ke berkas
+`D:\DATABASE` yang sama, sehingga hanya potongan terakhir yang tersisa dan terkirim ke BMKG Pusat.
+Task `LEMIMergeFragments` (`scripts/lemi_merge_fragments.ps1`, salinan di `C:\lemi_merge\`) berjalan
+tiap hari pukul 00:20 UTC, sebelum `konversi.py`: potongan hari yang sudah selesai digabung ke nama potongan
+pertama dan salinannya disimpan di `D:\lemi018_fragments\`, yang harus tetap di luar `D:\lemi018`.
+Potongan lama di server tidak dihapus; nilainya sama dengan berkas gabungan.
+
 ### Jam LEMI tertinggal sejak 1 Nov 2026 01:29 UTC
 
 Data berhenti sekitar 01:29:40 sampai 01:37:56 UTC, lalu cap waktunya menyambung dari 01:29:31, sehingga
