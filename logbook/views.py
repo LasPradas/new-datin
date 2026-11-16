@@ -6,6 +6,9 @@ from django.utils import timezone
 import zoneinfo
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q
+from django.contrib.auth.decorators import login_required
+import calendar
+import datetime
 from .models import Logbook
 from .forms import LogbookForm
 from .utils import send_telegram_log
@@ -142,6 +145,50 @@ def edit_log(request, log_id):
 
 def print_log_detail(request, log_id):
     return render(request, 'logbook/print_detail.html', {'log': get_object_or_404(Logbook, pk=log_id)})
+
+
+# ── Rekap status sirene ───────────────────────────────────────────────────────
+# Status sirene dicatat operator di logbook (field `sirine`, migrasi 0009).
+# Log sebelum field itu ada otomatis bernilai 'OFF' (default migrasi), jadi
+# tidak dihitung.
+SIRINE_RECORDED_SINCE = datetime.date(2026, 10, 3)
+
+
+@login_required
+def sirine_availability(request):
+    """Tabel log sirene ON dan OFF per bulan, dari isian logbook."""
+    today = timezone.now().astimezone(zoneinfo.ZoneInfo("Asia/Jayapura")).date()
+    try:
+        month = int(request.GET.get('month', today.month))
+        year = int(request.GET.get('year', today.year))
+        datetime.date(year, month, 1)
+    except ValueError:
+        month, year = today.month, today.year
+
+    first = datetime.date(year, month, 1)
+    last = datetime.date(year, month, calendar.monthrange(year, month)[1])
+    logs = (Logbook.objects
+            .filter(tanggal__range=[max(first, SIRINE_RECORDED_SINCE), last])
+            .select_related('petugas')
+            .order_by('tanggal', 'waktu_dibuat'))
+    logs_on = [log for log in logs if log.sirine == 'ON']
+    logs_off = [log for log in logs if log.sirine == 'OFF']
+    total = len(logs_on) + len(logs_off)
+
+    return render(request, 'logbook/sirine_availability.html', {
+        'page_title': 'Rekapitulasi Status Sirine',
+        'selected_month': month,
+        'selected_year': year,
+        'month_label': first,
+        'months_range': range(1, 13),
+        'years_range': range(SIRINE_RECORDED_SINCE.year, today.year + 2),
+        'logs_on': logs_on,
+        'logs_off': logs_off,
+        'total': total,
+        'pct_on': round(100 * len(logs_on) / total, 1) if total else None,
+        'recorded_since': SIRINE_RECORDED_SINCE,
+        'before_recording': last < SIRINE_RECORDED_SINCE,
+    })
 
 
 # ── Cek sirene (ping) ────────────────────────────────────────────────────────

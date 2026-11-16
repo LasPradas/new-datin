@@ -518,3 +518,38 @@ class LogbookInstrumentFilterTest(TestCase):
     def test_off_instruments_property(self):
         self.assertEqual(self.log_lemi_off.off_instruments, ['LEMI'])
         self.assertEqual(self.log_on.off_instruments, [])
+
+
+class SirineAvailabilityTest(TestCase):
+    def setUp(self):
+        self.user = make_user()
+        self.url = reverse('logbook:sirine_availability')
+        self.on = make_logbook(self.user, tanggal=datetime.date(2026, 10, 5), sirine='ON')
+        self.off = make_logbook(self.user, tanggal=datetime.date(2026, 10, 6), sirine='OFF')
+        # Sebelum field sirine ada (default migrasi OFF) -> tidak dihitung
+        self.old = make_logbook(self.user, tanggal=datetime.date(2026, 10, 1), sirine='OFF')
+        make_logbook(self.user, tanggal=datetime.date(2026, 11, 2), sirine='OFF')
+
+    def test_requires_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+
+    def test_splits_on_and_off_for_month(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url, {'month': 10, 'year': 2026})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['logs_on'], [self.on])
+        self.assertEqual(resp.context['logs_off'], [self.off])
+        self.assertEqual(resp.context['total'], 2)
+        self.assertEqual(resp.context['pct_on'], 50.0)
+
+    def test_month_before_recording(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url, {'month': 9, 'year': 2026})
+        self.assertTrue(resp.context['before_recording'])
+        self.assertEqual(resp.context['total'], 0)
+
+    def test_invalid_params_fall_back(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url, {'month': 13, 'year': 'x'})
+        self.assertEqual(resp.status_code, 200)

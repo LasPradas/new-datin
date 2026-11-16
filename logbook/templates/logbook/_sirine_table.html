@@ -1,0 +1,35 @@
+{% load tz %}
+<div class="bg-white shadow rounded-lg overflow-hidden mb-4">
+    <div class="px-4 py-3 border-b flex items-center gap-2">
+        <span class="badge {{ badge }}">{{ label }}</span>
+        <h2 class="text-sm font-bold text-gray-800">{{ title }} ({{ logs|length }})</h2>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="sirine-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">No</th>
+                    <th>Tanggal</th>
+                    <th>Waktu</th>
+                    <th>Shift</th>
+                    <th>Petugas</th>
+                    <th>Catatan</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td style="white-space:nowrap;">{{ log.tanggal|date:"d-m-Y" }}</td>
+                    <td>{{ log.waktu_dibuat|timezone:"Asia/Jayapura"|date:"H:i" }}</td>
+                    <td style="white-space:nowrap;">{{ log.shift }}</td>
+                    <td>{{ log.petugas.username|title|default:"-" }}</td>
+                    <td>{{ log.catatan|default:"" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af;font-style:italic;">Tidak ada log dengan sirine {{ label }}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

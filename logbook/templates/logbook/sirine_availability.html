@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% block content %}
+<style>
+    .custom-filter-box {
+        background-color: #ffffff;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .custom-select {
+        padding: 5px 10px;
+        border: 1px solid #999;
+        border-radius: 4px;
+        background-color: white;
+        font-size: 13px;
+        min-width: 90px;
+        color: #333;
+    }
+    .custom-btn {
+        background-color: #4f46e5;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .stat-card { background: #fff; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .stat-label { font-size: 12px; color: #6b7280; font-weight: 600; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #111827; }
+    .sirine-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .sirine-table th { background: #1f2937; color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+    .sirine-table td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    .sirine-table tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: #fff; }
+    .badge-on { background: #059669; }
+    .badge-off { background: #dc2626; }
+</style>
+
+<div class="flex h-screen bg-gray-100">
+  {% include 'partials/_sidebar.html' %}
+
+  <div class="flex-1 flex flex-col overflow-hidden">
+    {% include 'partials/_topbar.html' %}
+
+    <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4">
+        <div class="container mx-auto">
+
+            <div class="flex justify-between items-center flex-wrap gap-3 mb-4">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">{{ page_title }}</h1>
+                    <p class="text-sm text-gray-500">{{ month_label|date:"F Y" }} &middot; dari isian Logbook</p>
+                </div>
+
+                <form method="get" class="custom-filter-box">
+                    <div>
+                        <span class="text-xs font-bold text-gray-600">Bulan:</span>
+                        <select name="month" class="custom-select">
+                            {% for m in months_range %}
+                            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <span class="text-xs font-bold text-gray-600">Tahun:</span>
+                        <select name="year" class="custom-select">
+                            {% for y in years_range %}
+                            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="custom-btn">Tampilkan</button>
+                </form>
+            </div>
+
+            {% if before_recording %}
+            <div class="bg-white shadow rounded-lg p-6 mb-4 text-sm text-gray-600">
+                Status sirine baru dicatat di logbook sejak {{ recorded_since|date:"d F Y" }}. Pilih bulan setelahnya.
+            </div>
+            {% else %}
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div class="stat-card"><div class="stat-label">Total Log</div><div class="stat-value">{{ total }}</div></div>
+                <div class="stat-card"><div class="stat-label">Sirine ON</div><div class="stat-value" style="color:#059669;">{{ logs_on|length }}</div></div>
+                <div class="stat-card"><div class="stat-label">Sirine OFF</div><div class="stat-value" style="color:#dc2626;">{{ logs_off|length }}</div></div>
+                <div class="stat-card"><div class="stat-label">Persentase ON</div><div class="stat-value">{% if pct_on is not None %}{{ pct_on }}%{% else %}&mdash;{% endif %}</div></div>
+            </div>
+
+            {% with title="Sirine OFF" logs=logs_off badge="badge-off" label="OFF" %}
+            {% include "logbook/_sirine_table.html" %}
+            {% endwith %}
+            {% with title="Sirine ON" logs=logs_on badge="badge-on" label="ON" %}
+            {% include "logbook/_sirine_table.html" %}
+            {% endwith %}
+
+            {% endif %}
+
+            <p class="text-xs text-gray-500 italic mb-6">
+                * Waktu dalam WIT (UTC+9). Status sirine dicatat di logbook sejak {{ recorded_since|date:"d F Y" }};
+                log sebelum tanggal itu tidak dihitung.
+            </p>
+        </div>
+    </main>
+  </div>
+</div>
+{% endblock %}
