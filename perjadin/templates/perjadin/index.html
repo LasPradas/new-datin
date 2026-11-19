@@ -258,7 +258,7 @@
         container.style.display = 'block';
 
         // Ambil data dari URL detail menggunakan fetch (Pengganti HTMX)
-        fetch(`/perjadin/detail/${pegawaiId}/`)
+        fetch(`/perjadin/detail/${pegawaiId}/?month={{ current_month }}&year={{ current_year }}`)
             .then(response => {
                 if (!response.ok) throw new Error('Gagal mengambil data');
                 return response.text();

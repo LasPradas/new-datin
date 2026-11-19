@@ -4,10 +4,37 @@ from itertools import groupby
 from django.shortcuts import render, get_object_or_404,redirect
 from .models import Pegawai, PerjalananDinas, JenisPerjadin
 from django.http import HttpResponseForbidden, HttpResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_POST
 from django.db.models import Q
 
+def _is_allowed(request):
+    """Halaman perjadin hanya untuk user jambari."""
+    return request.user.is_authenticated and request.user.username == 'jambari'
+
+
+def _date_error(t_mulai, t_selesai):
+    """Pesan error kalau tanggal tidak valid/terbalik, selain itu None."""
+    # Tanggal terbalik membuat durasi & biaya negatif (lihat perjadin #64)
+    try:
+        if date.fromisoformat(t_selesai) < date.fromisoformat(t_mulai):
+            return "Tgl Selesai tidak boleh sebelum Tgl Mulai."
+    except (TypeError, ValueError):
+        return "Format tanggal tidak valid."
+    return None
+
+
+def _back_to_month(month, year, fallback):
+    """Redirect ke rekap bulan yang sedang dibuka (atau bulan tanggal fallback)."""
+    try:
+        month, year = int(month), int(year)
+        date(year, month, 1)
+    except (TypeError, ValueError):
+        month, year = fallback.month, fallback.year
+    return redirect(f'/perjadin/?month={month}&year={year}')
+
+
 def index_perjadin(request):
-    if not request.user.is_authenticated or request.user.username != 'jambari':
+    if not _is_allowed(request):
         return HttpResponseForbidden("Akses Ditolak.")
     
     today = date.today()
@@ -117,7 +144,7 @@ def index_perjadin(request):
     return render(request, 'perjadin/index.html', context)
 
 def tambah_perjadin(request):
-    if not request.user.is_authenticated or request.user.username != 'jambari':
+    if not _is_allowed(request):
         return HttpResponseForbidden("Akses Ditolak.")
     if request.method == 'POST':
         p_id = request.POST.get('pegawai')
@@ -132,12 +159,9 @@ def tambah_perjadin(request):
         curr_y = request.POST.get('current_year') or (t_mulai or '')[:4]
 
         if all([p_id, j_id, tujuan, t_mulai, t_selesai]):
-            # Tanggal terbalik membuat durasi & biaya negatif (lihat perjadin #64)
-            try:
-                if date.fromisoformat(t_selesai) < date.fromisoformat(t_mulai):
-                    return HttpResponseBadRequest("Tgl Selesai tidak boleh sebelum Tgl Mulai.")
-            except ValueError:
-                return HttpResponseBadRequest("Format tanggal tidak valid.")
+            error = _date_error(t_mulai, t_selesai)
+            if error:
+                return HttpResponseBadRequest(error)
 
             # CEK DUPLIKAT: Cari apakah pegawai sudah ada perjadin di tanggal tersebut
             is_exists = PerjalananDinas.objects.filter(
@@ -167,6 +191,75 @@ def tambah_perjadin(request):
     return redirect('perjadin:index_perjadin')
 
 def detail_pegawai(request, pegawai_id):
+    if not _is_allowed(request):
+        return HttpResponseForbidden("Akses Ditolak.")
     pegawai = get_object_or_404(Pegawai, id=pegawai_id)
-    trips = pegawai.perjadins.all().order_by('-tgl_mulai')
-    return render(request, 'perjadin/partials/detail_modal.html', {'pegawai': pegawai, 'trips': trips})
+    trips = pegawai.perjadins.select_related('jenis').order_by('-tgl_mulai')
+    return render(request, 'perjadin/partials/detail_modal.html', {
+        'pegawai': pegawai, 'trips': trips,
+        # bulan rekap yang sedang dibuka, untuk kembali setelah edit/hapus
+        'current_month': request.GET.get('month', ''),
+        'current_year': request.GET.get('year', ''),
+    })
+
+
+def edit_perjadin(request, trip_id):
+    """Edit satu perjadin milik satu pegawai (baris lain di kegiatan yang sama tidak ikut berubah)."""
+    if not _is_allowed(request):
+        return HttpResponseForbidden("Akses Ditolak.")
+    trip = get_object_or_404(PerjalananDinas.objects.select_related('pegawai', 'jenis'), id=trip_id)
+    data = request.POST if request.method == 'POST' else request.GET
+    curr_m = data.get('current_month', '')
+    curr_y = data.get('current_year', '')
+    error = None
+
+    if request.method == 'POST':
+        values = {f: (request.POST.get(f) or '').strip()
+                  for f in ('pegawai', 'jenis', 'tujuan', 'kegiatan', 'tgl_mulai', 'tgl_selesai')}
+        if not all(values[f] for f in ('pegawai', 'jenis', 'tujuan', 'tgl_mulai', 'tgl_selesai')):
+            error = "Pegawai, jenis, tujuan dan tanggal wajib diisi."
+        else:
+            error = _date_error(values['tgl_mulai'], values['tgl_selesai'])
+        if not error:
+            pegawai = Pegawai.objects.filter(id=values['pegawai']).first()
+            jenis = JenisPerjadin.objects.filter(id=values['jenis']).first()
+            if not pegawai or not jenis:
+                error = "Pegawai atau jenis perjadin tidak ditemukan."
+        if not error:
+            trip.pegawai = pegawai
+            trip.jenis = jenis
+            trip.tujuan = values['tujuan']
+            trip.kegiatan = values['kegiatan']
+            trip.tgl_mulai = date.fromisoformat(values['tgl_mulai'])
+            trip.tgl_selesai = date.fromisoformat(values['tgl_selesai'])
+            trip.save()
+            return _back_to_month(curr_m, curr_y, trip.tgl_mulai)
+        # tampilkan lagi form dengan isian user
+        form_values = values
+    else:
+        form_values = {
+            'pegawai': str(trip.pegawai_id), 'jenis': str(trip.jenis_id),
+            'tujuan': trip.tujuan, 'kegiatan': trip.kegiatan or '',
+            'tgl_mulai': trip.tgl_mulai.isoformat(), 'tgl_selesai': trip.tgl_selesai.isoformat(),
+        }
+
+    return render(request, 'perjadin/edit.html', {
+        'trip': trip,
+        'values': form_values,
+        'error': error,
+        'pegawai_all': Pegawai.objects.filter(tanggal_keluar__isnull=True).order_by('urutan'),
+        'jenis_list': JenisPerjadin.objects.all(),
+        'current_month': curr_m,
+        'current_year': curr_y,
+    }, status=400 if error else 200)
+
+
+@require_POST
+def hapus_perjadin(request, trip_id):
+    """Hapus satu perjadin milik satu pegawai."""
+    if not _is_allowed(request):
+        return HttpResponseForbidden("Akses Ditolak.")
+    trip = get_object_or_404(PerjalananDinas, id=trip_id)
+    tgl_mulai = trip.tgl_mulai
+    trip.delete()
+    return _back_to_month(request.POST.get('current_month'), request.POST.get('current_year'), tgl_mulai)

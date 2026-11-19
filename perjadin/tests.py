@@ -183,3 +183,100 @@ class PerjalananDinasViewsTest(TestCase):
         self.client.login(username='jambari', password='pass123')
         resp = self.client.get(reverse('perjadin:detail_perjadin', args=[9999]))
         self.assertEqual(resp.status_code, 404)
+
+
+class PerjadinEditHapusTest(TestCase):
+    def setUp(self):
+        User.objects.create_user('jambari', password='pass123')
+        User.objects.create_user('other', password='pass123')
+        self.jenis = make_jenis()
+        self.jenis_kota = make_jenis(nama='Dalam Kota', tarif_harian=170000)
+        self.pegawai = make_pegawai()
+        self.pegawai2 = Pegawai.objects.create(
+            user=User.objects.create_user('pegawai2', password='x'),
+            nama='Lidya', nip='2', pangkat='-', jabatan='-')
+        kw = dict(tujuan='Jayapura', kegiatan='PM Sirine',
+                  tgl_mulai=datetime.date(2026, 5, 26), tgl_selesai=datetime.date(2026, 5, 26))
+        self.trip = make_perjadin(self.pegawai, self.jenis_kota, **kw)
+        self.trip2 = make_perjadin(self.pegawai2, self.jenis_kota, **kw)   # peserta lain, kegiatan sama
+
+    def _login(self, username='jambari'):
+        self.client.login(username=username, password='pass123')
+
+    def _edit_data(self, **extra):
+        data = {'pegawai': self.pegawai.id, 'jenis': self.jenis.id, 'tujuan': 'Keerom',
+                'kegiatan': 'PM ARPI', 'tgl_mulai': '2026-05-26', 'tgl_selesai': '2026-05-28',
+                'current_month': '11', 'current_year': '2026'}
+        data.update(extra)
+        return data
+
+    def test_detail_modal_has_edit_and_hapus(self):
+        self._login()
+        resp = self.client.get(reverse('perjadin:detail_perjadin', args=[self.pegawai.id]),
+                               {'month': 11, 'year': 2026})
+        self.assertContains(resp, reverse('perjadin:edit_perjadin', args=[self.trip.id]))
+        self.assertContains(resp, reverse('perjadin:hapus_perjadin', args=[self.trip.id]))
+        self.assertContains(resp, 'name="current_month" value="11"')
+
+    def test_detail_requires_jambari(self):
+        self._login('other')
+        resp = self.client.get(reverse('perjadin:detail_perjadin', args=[self.pegawai.id]))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_edit_get_prefills(self):
+        self._login()
+        resp = self.client.get(reverse('perjadin:edit_perjadin', args=[self.trip.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'value="2026-05-26"')
+        self.assertContains(resp, 'value="PM Sirine"')
+
+    def test_edit_saves_only_this_pegawai(self):
+        self._login()
+        resp = self.client.post(reverse('perjadin:edit_perjadin', args=[self.trip.id]), self._edit_data())
+        self.assertRedirects(resp, '/perjadin/?month=11&year=2026', fetch_redirect_response=False)
+        self.trip.refresh_from_db()
+        self.trip2.refresh_from_db()
+        self.assertEqual((self.trip.tujuan, self.trip.durasi_hari, self.trip.jenis_id), ('Keerom', 3, self.jenis.id))
+        self.assertEqual(self.trip2.tujuan, 'Jayapura')
+
+    def test_edit_rejects_reversed_dates(self):
+        self._login()
+        resp = self.client.post(reverse('perjadin:edit_perjadin', args=[self.trip.id]),
+                                self._edit_data(tgl_selesai='2026-04-26'))
+        self.assertEqual(resp.status_code, 400)
+        self.assertContains(resp, 'Tgl Selesai tidak boleh sebelum Tgl Mulai', status_code=400)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.tujuan, 'Jayapura')
+
+    def test_edit_missing_month_redirects_to_trip_month(self):
+        self._login()
+        resp = self.client.post(reverse('perjadin:edit_perjadin', args=[self.trip.id]),
+                                self._edit_data(current_month='', current_year=''))
+        self.assertRedirects(resp, '/perjadin/?month=5&year=2026', fetch_redirect_response=False)
+
+    def test_edit_requires_jambari(self):
+        self._login('other')
+        resp = self.client.post(reverse('perjadin:edit_perjadin', args=[self.trip.id]), self._edit_data())
+        self.assertEqual(resp.status_code, 403)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.tujuan, 'Jayapura')
+
+    def test_hapus_deletes_only_this_pegawai(self):
+        self._login()
+        resp = self.client.post(reverse('perjadin:hapus_perjadin', args=[self.trip.id]),
+                                {'current_month': '11', 'current_year': '2026'})
+        self.assertRedirects(resp, '/perjadin/?month=11&year=2026', fetch_redirect_response=False)
+        self.assertFalse(PerjalananDinas.objects.filter(id=self.trip.id).exists())
+        self.assertTrue(PerjalananDinas.objects.filter(id=self.trip2.id).exists())
+
+    def test_hapus_get_not_allowed(self):
+        self._login()
+        resp = self.client.get(reverse('perjadin:hapus_perjadin', args=[self.trip.id]))
+        self.assertEqual(resp.status_code, 405)
+        self.assertTrue(PerjalananDinas.objects.filter(id=self.trip.id).exists())
+
+    def test_hapus_requires_jambari(self):
+        self._login('other')
+        resp = self.client.post(reverse('perjadin:hapus_perjadin', args=[self.trip.id]))
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(PerjalananDinas.objects.filter(id=self.trip.id).exists())

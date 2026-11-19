@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    /* Sama dengan perjadin/index.html */
+    .perjadin-container { font-family: Arial, sans-serif; margin: 20px; color: #333; max-width: 900px; }
+    .card { background: #fff; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .card-header { background: #003366; color: white; padding: 15px; }
+    .card-body { padding: 20px; }
+    .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label { font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #555; }
+    .form-group input, .form-group select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    .btn-submit { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .btn-submit:hover { background: #004494; }
+    .btn-batal { display: inline-block; padding: 10px 20px; border-radius: 5px; border: 1px solid #ccc; color: #333; text-decoration: none; font-weight: bold; background: #fff; }
+    .alert-error { background: #fdecea; color: #b71c1c; border: 1px solid #f5c6cb; padding: 10px 14px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; }
+    .info { font-size: 12px; color: #666; margin: 0 0 15px; }
+</style>
+
+<div class="perjadin-container">
+    <div class="card">
+        <div class="card-header">
+            <h2 style="margin:0; font-size:18px;">Edit Perjalanan Dinas</h2>
+        </div>
+        <div class="card-body">
+            <p class="info">
+                Mengubah perjadin <strong>{{ trip.pegawai.nama }}</strong> saja.
+                Peserta lain di kegiatan yang sama tidak ikut berubah.
+            </p>
+
+            {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="current_month" value="{{ current_month }}">
+                <input type="hidden" name="current_year" value="{{ current_year }}">
+                <div class="grid-form">
+                    <div class="form-group">
+                        <label for="id_pegawai">Pegawai</label>
+                        <select name="pegawai" id="id_pegawai" required>
+                            {% for p in pegawai_all %}
+                                <option value="{{ p.id }}" {% if p.id|stringformat:"s" == values.pegawai %}selected{% endif %}>{{ p.nama }}</option>
+                            {% endfor %}
+                            {% if trip.pegawai.tanggal_keluar %}
+                                <option value="{{ trip.pegawai.id }}" {% if trip.pegawai.id|stringformat:"s" == values.pegawai %}selected{% endif %}>{{ trip.pegawai.nama }} (sudah keluar)</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="id_jenis">Jenis Perjadin</label>
+                        <select name="jenis" id="id_jenis" required>
+                            {% for j in jenis_list %}
+                                <option value="{{ j.id }}" {% if j.id|stringformat:"s" == values.jenis %}selected{% endif %}>{{ j.nama }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="id_tujuan">Tujuan</label>
+                        <input type="text" name="tujuan" id="id_tujuan" value="{{ values.tujuan }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="id_kegiatan">Kegiatan</label>
+                        <input type="text" name="kegiatan" id="id_kegiatan" value="{{ values.kegiatan }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="id_tgl_mulai">Tgl Mulai</label>
+                        <input type="date" name="tgl_mulai" id="id_tgl_mulai" value="{{ values.tgl_mulai }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="id_tgl_selesai">Tgl Selesai</label>
+                        <input type="date" name="tgl_selesai" id="id_tgl_selesai" value="{{ values.tgl_selesai }}" min="{{ values.tgl_mulai }}" required>
+                    </div>
+                </div>
+                <div style="margin-top:20px; display:flex; gap:10px;">
+                    <button type="submit" class="btn-submit">SIMPAN PERUBAHAN</button>
+                    <a class="btn-batal" href="/perjadin/{% if current_month and current_year %}?month={{ current_month }}&year={{ current_year }}{% endif %}">Batal</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Tgl Selesai tidak boleh sebelum Tgl Mulai
+    document.getElementById('id_tgl_mulai').addEventListener('change', function () {
+        const selesai = document.getElementById('id_tgl_selesai');
+        selesai.min = this.value;
+        if (!selesai.value || selesai.value < this.value) selesai.value = this.value;
+    });
+</script>
+{% endblock %}
