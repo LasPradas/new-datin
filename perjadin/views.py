@@ -11,9 +11,13 @@ def index_perjadin(request):
         return HttpResponseForbidden("Akses Ditolak.")
     
     today = date.today()
-    # Mengambil bulan dan tahun dari URL, jika tidak ada gunakan bulan berjalan
-    month = int(request.GET.get('month', today.month))
-    year = int(request.GET.get('year', today.year))
+    # Mengambil bulan dan tahun dari URL, jika tidak ada/tidak valid gunakan bulan berjalan
+    try:
+        month = int(request.GET.get('month', today.month))
+        year = int(request.GET.get('year', today.year))
+        date(year, month, 1)
+    except (TypeError, ValueError):
+        month, year = today.month, today.year
     
     num_days = calendar.monthrange(year, month)[1]
     days = range(1, num_days + 1)
@@ -113,6 +117,8 @@ def index_perjadin(request):
     return render(request, 'perjadin/index.html', context)
 
 def tambah_perjadin(request):
+    if not request.user.is_authenticated or request.user.username != 'jambari':
+        return HttpResponseForbidden("Akses Ditolak.")
     if request.method == 'POST':
         p_id = request.POST.get('pegawai')
         j_id = request.POST.get('jenis')
@@ -121,8 +127,9 @@ def tambah_perjadin(request):
         t_mulai = request.POST.get('tgl_mulai')
         t_selesai = request.POST.get('tgl_selesai')
 
-        curr_m = request.POST.get('current_month')
-        curr_y = request.POST.get('current_year')
+        # Kembali ke bulan yang sedang dibuka; kalau tidak terkirim, ke bulan tgl_mulai
+        curr_m = request.POST.get('current_month') or (t_mulai or '')[5:7]
+        curr_y = request.POST.get('current_year') or (t_mulai or '')[:4]
 
         if all([p_id, j_id, tujuan, t_mulai, t_selesai]):
             # CEK DUPLIKAT: Cari apakah pegawai sudah ada perjadin di tanggal tersebut

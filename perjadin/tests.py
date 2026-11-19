@@ -118,6 +118,51 @@ class PerjalananDinasViewsTest(TestCase):
         })
         self.assertIn(resp.status_code, [200, 302])
 
+    def _post_new(self, **extra):
+        data = {
+            'pegawai': self.pegawai.id, 'jenis': self.jenis.id,
+            'tujuan': 'Sentani', 'kegiatan': 'CM', 'tgl_mulai': '2026-11-18',
+            'tgl_selesai': '2026-11-20', **extra,
+        }
+        return self.client.post(reverse('perjadin:tambah_perjadin'), data, follow=True)
+
+    def test_tambah_without_current_month_redirects_to_trip_month(self):
+        # Form lama tidak mengirim current_month/current_year -> dulu 500 (month=None)
+        self.client.login(username='jambari', password='pass123')
+        resp = self._post_new()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.redirect_chain[-1][0], '/perjadin/?month=11&year=2026')
+        self.assertEqual(PerjalananDinas.objects.filter(tujuan='Sentani').count(), 1)
+
+    def test_tambah_returns_to_month_being_viewed(self):
+        self.client.login(username='jambari', password='pass123')
+        resp = self._post_new(current_month='10', current_year='2026')
+        self.assertEqual(resp.redirect_chain[-1][0], '/perjadin/?month=10&year=2026')
+
+    def test_tambah_duplicate_also_redirects_ok(self):
+        self.client.login(username='jambari', password='pass123')
+        self._post_new()
+        resp = self._post_new()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(PerjalananDinas.objects.filter(tujuan='Sentani').count(), 1)
+
+    def test_tambah_unauthorized_returns_403(self):
+        self.client.login(username='other', password='pass123')
+        resp = self._post_new()
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(PerjalananDinas.objects.filter(tujuan='Sentani').exists())
+
+    def test_index_invalid_month_falls_back(self):
+        self.client.login(username='jambari', password='pass123')
+        resp = self.client.get(reverse('perjadin:index_perjadin'), {'month': 'None', 'year': 'None'})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_index_form_sends_current_month(self):
+        self.client.login(username='jambari', password='pass123')
+        resp = self.client.get(reverse('perjadin:index_perjadin'), {'month': 10, 'year': 2026})
+        self.assertContains(resp, 'name="current_month" value="10"')
+        self.assertContains(resp, 'name="current_year" value="2026"')
+
     def test_detail_pegawai_authorized(self):
         self.client.login(username='jambari', password='pass123')
         resp = self.client.get(reverse('perjadin:detail_perjadin', args=[self.pegawai.id]))

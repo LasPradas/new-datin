@@ -179,6 +179,8 @@
             <h3 style="margin-top:0;">+ Input Perjalanan Dinas Baru</h3>
             <form method="POST" action="{% url 'perjadin:tambah_perjadin' %}" onsubmit="this.querySelector('button').disabled=true;">
                 {% csrf_token %}
+                <input type="hidden" name="current_month" value="{{ current_month }}">
+                <input type="hidden" name="current_year" value="{{ current_year }}">
                 <div class="grid-form">
                     <div class="form-group">
                         <label for="id_pegawai">Pegawai</label>
