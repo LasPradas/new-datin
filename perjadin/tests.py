@@ -146,6 +146,17 @@ class PerjalananDinasViewsTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(PerjalananDinas.objects.filter(tujuan='Sentani').count(), 1)
 
+    def test_tambah_rejects_end_before_start(self):
+        self.client.login(username='jambari', password='pass123')
+        resp = self._post_new(tgl_mulai='2026-05-26', tgl_selesai='2026-04-26')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(PerjalananDinas.objects.filter(tujuan='Sentani').exists())
+
+    def test_tambah_rejects_bad_date(self):
+        self.client.login(username='jambari', password='pass123')
+        resp = self._post_new(tgl_mulai='26-05-2026')
+        self.assertEqual(resp.status_code, 400)
+
     def test_tambah_unauthorized_returns_403(self):
         self.client.login(username='other', password='pass123')
         resp = self._post_new()

@@ -215,6 +215,14 @@
                     <div class="form-group">
                         <label for="id_tgl_selesai">Tgl Selesai</label>
                         <input type="date" name="tgl_selesai" id="id_tgl_selesai" required>
+                        <script>
+                            // Tgl Selesai tidak boleh sebelum Tgl Mulai
+                            document.getElementById('id_tgl_mulai').addEventListener('change', function () {
+                                const selesai = document.getElementById('id_tgl_selesai');
+                                selesai.min = this.value;
+                                if (!selesai.value || selesai.value < this.value) selesai.value = this.value;
+                            });
+                        </script>
                     </div>
                 </div>
                 <button type="submit" class="btn-submit text-white">SIMPAN DATA</button>

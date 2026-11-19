@@ -3,7 +3,7 @@ from datetime import date
 from itertools import groupby
 from django.shortcuts import render, get_object_or_404,redirect
 from .models import Pegawai, PerjalananDinas, JenisPerjadin
-from django.http import HttpResponseForbidden, HttpResponse
+from django.http import HttpResponseForbidden, HttpResponse, HttpResponseBadRequest
 from django.db.models import Q
 
 def index_perjadin(request):
@@ -132,6 +132,13 @@ def tambah_perjadin(request):
         curr_y = request.POST.get('current_year') or (t_mulai or '')[:4]
 
         if all([p_id, j_id, tujuan, t_mulai, t_selesai]):
+            # Tanggal terbalik membuat durasi & biaya negatif (lihat perjadin #64)
+            try:
+                if date.fromisoformat(t_selesai) < date.fromisoformat(t_mulai):
+                    return HttpResponseBadRequest("Tgl Selesai tidak boleh sebelum Tgl Mulai.")
+            except ValueError:
+                return HttpResponseBadRequest("Format tanggal tidak valid.")
+
             # CEK DUPLIKAT: Cari apakah pegawai sudah ada perjadin di tanggal tersebut
             is_exists = PerjalananDinas.objects.filter(
                 pegawai_id=p_id,
