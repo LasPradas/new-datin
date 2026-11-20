@@ -80,7 +80,10 @@ def best_run(runs, event_time, lat, lon):
     return max(cands, key=lambda r: r.mtime) if cands else None
 
 
-_SAFE_NAME = re.compile(r"^[0-9A-Za-z_]{14,80}$")
+# Nama folder data_MMI: 14 digit WIB di depan, lalu huruf/angka/_/- (lintang/bujur negatif,
+# mis. 20261118102403_53_-2830_136730_20261118102403). Diawali angka, jadi tidak bisa dibaca
+# rsync sebagai opsi; spasi, ; / dll. tetap ditolak.
+_SAFE_NAME = re.compile(r"^\d{14}[0-9A-Za-z_-]{0,66}$")
 
 
 def fetch(run, dest):

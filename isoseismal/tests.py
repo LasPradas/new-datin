@@ -466,5 +466,18 @@ class ScenarioTest(MediaMixin, TestCase):
 
     def test_bad_run_name_rejected(self):
         from . import remote
-        with self.assertRaises(ValueError):
-            remote.fetch_dir('x; rm -rf /', '/tmp')
+        for bad in ('x; rm -rf /', '-e sh 20261118102403', '20261118102403/../../etc',
+                    '20261118102403 x', ''):
+            with self.assertRaises(ValueError, msg=bad):
+                remote.fetch_dir(bad, '/tmp')
+
+    def test_real_run_with_negative_lat_accepted(self):
+        # Gempa M5.3 18-11-2026: lintang negatif di nama run dulu ditolak ('-' tidak diizinkan)
+        from . import remote
+        for name in ('20261118102403_53_-2830_136730_20261118102403',
+                     '20261110153404_53_-0190_132980_20261110153404',
+                     '2026111114000020261111140000'):
+            self.assertRegex(name, remote._SAFE_NAME)
+        with mock.patch('isoseismal.remote.subprocess.run') as run, self.assertRaises(FileNotFoundError):
+            remote.fetch_dir('20261118102403_53_-2830_136730_20261118102403', '/nonexistent-isoseismal')
+        self.assertIn('host50:', run.call_args[0][0][-2])
