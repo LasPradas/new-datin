@@ -21,6 +21,7 @@ Kredensial diambil dari settings (SIRINE_USER / SIRINE_PASS, dari .env).
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
@@ -39,9 +40,13 @@ FORBIDDEN_PATH_RE = re.compile(
     r'/(real|test|play|start|stop|trigger|bunyi|alarm)(/|$)', re.IGNORECASE
 )
 
-#: Baris hasil ping: "4 packets transmitted, 4 received, 0% packet loss, time 3006ms"
+#: Baris hasil ping: "4 packets transmitted, 4 received, 0% packet loss, time 3006ms".
+#: iputils menyisipkan ", +N duplicates" dan/atau ", +N errors" (mis. host
+#: unreachable) sebelum persentase, dan bisa menulis loss desimal ("33.3333%").
 PING_LINE_RE = re.compile(
-    r'(\d+)\s+packets?\s+transmitted,\s*(\d+)\s+received,\s*(\d+)%\s*packet\s+loss',
+    r'(\d+)\s+packets?\s+transmitted,\s*(\d+)\s+(?:packets?\s+)?received,'
+    r'(?:\s*\+\d+\s+(?:duplicates?|errors?),)*'
+    r'\s*(\d+(?:\.\d+)?)%\s*packet\s+loss',
     re.IGNORECASE,
 )
 
@@ -117,8 +122,11 @@ def parse_ping_message(message: str) -> PingResult:
     if not match:
         raise SirineCheckError(f'Format hasil ping tidak dikenali: {text!r}')
 
-    transmitted, received, loss = (int(g) for g in match.groups())
-    is_on = transmitted > 0 and received == transmitted and loss == 0
+    transmitted, received = int(match.group(1)), int(match.group(2))
+    loss_exact = float(match.group(3))
+    # dibulatkan ke atas supaya loss kecil (mis. 0.5%) tidak tampil sebagai 0%
+    loss = math.ceil(loss_exact)
+    is_on = transmitted > 0 and received == transmitted and loss_exact == 0
     return PingResult(
         transmitted=transmitted,
         received=received,

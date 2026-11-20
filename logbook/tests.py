@@ -280,6 +280,21 @@ class SirineParseTest(TestCase):
         r = parse_ping_message('4 packets transmitted, 0 received, 100% packet loss, time 3005ms')
         self.assertEqual(r.status, 'OFF')
 
+    def test_errors_field_is_parsed_as_off(self):
+        # Format nyata dari panel saat sirene tidak terjangkau (log .189, 18-19 Nov 2026)
+        r = parse_ping_message('4 packets transmitted, 0 received, +4 errors, 100% packet loss, time 3062ms')
+        self.assertEqual((r.transmitted, r.received, r.loss_percent, r.status), (4, 0, 100, 'OFF'))
+
+    def test_duplicates_and_errors_fields(self):
+        r = parse_ping_message('4 packets transmitted, 4 received, +1 duplicates, 0% packet loss, time 3003ms')
+        self.assertEqual((r.received, r.loss_percent, r.status), (4, 0, 'ON'))
+        r = parse_ping_message('4 packets transmitted, 2 received, +1 duplicates, +2 errors, 50% packet loss, time 3003ms')
+        self.assertEqual((r.received, r.loss_percent, r.status), (2, 50, 'OFF'))
+
+    def test_decimal_loss(self):
+        r = parse_ping_message('3 packets transmitted, 2 received, 33.3333% packet loss, time 2003ms')
+        self.assertEqual((r.loss_percent, r.status), (34, 'OFF'))
+
     def test_partial_loss_is_off(self):
         r = parse_ping_message('4 packets transmitted, 3 received, 25% packet loss, time 3004ms')
         self.assertEqual(r.status, 'OFF')
