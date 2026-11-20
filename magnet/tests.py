@@ -1238,8 +1238,8 @@ class KIndexPublishedDayTest(TestCase):
         utc = datetime.timezone.utc
         fri = datetime.date(2026, 11, 13)
         thu, wed = fri - datetime.timedelta(days=1), fri - datetime.timedelta(days=2)
-        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 6, 59, tzinfo=utc)), wed)
-        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 7, 0, tzinfo=utc)), thu)
+        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 0, 59, tzinfo=utc)), wed)
+        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 1, 0, tzinfo=utc)), thu)
         self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 23, 59, tzinfo=utc)), thu)
 
     def test_today_and_unpublished_days_are_not_shown(self):

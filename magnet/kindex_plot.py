@@ -26,7 +26,9 @@ def _tgl(d):
 
 
 # Grafik diterbitkan sekali sehari bersama kiriman Telegram (jadwal send-kindex-jyp-daily).
-POST_HOUR_UTC = 7   # 07:00 UTC = 16:00 WIT
+# Berkas mentah kemarin ditutup LEMI pukul 00:00 UTC dan dikirim LEMIRawSync dalam ~15 menit,
+# jadi pukul 01:00 UTC data kemarin sudah lengkap.
+POST_HOUR_UTC = 1   # 01:00 UTC = 10:00 WIT
 
 
 def published_until(now=None):
@@ -67,6 +69,38 @@ def _figure():
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     return plt
+
+
+LOGO_STATIC = 'repository/images/logo-bmkg.png'
+
+
+LOGO_HEIGHT_IN = 0.7
+LOGO_MARGIN_IN = 0.1
+
+
+def _layout_with_logo(fig):
+    """tight_layout yang menyisakan kolom kiri untuk logo, lalu pasang logonya."""
+    w_in = fig.get_size_inches()[0]
+    left = (LOGO_HEIGHT_IN * 0.81 + 2 * LOGO_MARGIN_IN) / w_in   # logo 242x300 px
+    fig.tight_layout(rect=[left, 0, 1, 1])
+    _add_logo(fig)
+
+
+def _add_logo(fig, height_in=LOGO_HEIGHT_IN):
+    """Logo BMKG di pojok kiri atas, seperti citra indeks K BMKG."""
+    from django.contrib.staticfiles import finders
+    import matplotlib.image as mpimg
+
+    path = finders.find(LOGO_STATIC)
+    if not path:
+        return
+    img = mpimg.imread(path)
+    w_in, h_in = fig.get_size_inches()
+    width_in = height_in * img.shape[1] / img.shape[0]
+    margin = LOGO_MARGIN_IN
+    ax = fig.add_axes([margin / w_in, 1 - (height_in + margin) / h_in, width_in / w_in, height_in / h_in])
+    ax.imshow(img)
+    ax.axis('off')
 
 
 def render_k_png(end_day, days=7):
@@ -111,7 +145,7 @@ def render_k_png(end_day, days=7):
     ax.text(1.01, 0.0, 'Arsir = data blok < 90%\nKosong = tidak ada data\n\n'
             'Hitung lokal metode FMI\ndari data LEMI-018 JYP\nStasiun Geofisika Jayapura',
             transform=ax.transAxes, va='bottom', fontsize=7.5, color='#555')
-    fig.tight_layout()
+    _layout_with_logo(fig)
     buf = io.BytesIO()
     fig.savefig(buf, format='png')
     plt.close(fig)
@@ -141,7 +175,7 @@ def render_a_png(end_day, days=7):
     ax.set_title(f'Indeks A Harian — Jayapura (JYP)\n{_tgl(rows[0][0])} s.d. {_tgl(rows[-1][0])}',
                  fontsize=12, fontweight='bold')
     ax.grid(axis='y', linestyle='--', alpha=0.3)
-    fig.tight_layout()
+    _layout_with_logo(fig)
     buf = io.BytesIO()
     fig.savefig(buf, format='png')
     plt.close(fig)
