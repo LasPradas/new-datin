@@ -289,11 +289,17 @@ def load_three_days(raw_dir, day):
     return minute_means(np.concatenate(ts), np.concatenate(xs), np.concatenate(ys), start, 3 * MIN_PER_DAY)
 
 
+# Jam-jam akhir suatu hari baru tetap setelah ada 4 jam pertama hari berikutnya: diuji pada data
+# JYP 25 Okt-18 Nov 2026, dengan 1 jam blok 21-24 UTC masih 1-3 K terlalu tinggi, dengan 4 jam
+# tidak ada nilai K yang berubah lagi dibanding data hari berikutnya penuh.
+NEXT_DAY_FINAL_MIN = 240
+
+
 def next_day_missing(x3, y3):
-    """Data hari sesudah hari tengah belum ada separuhnya."""
-    nxt = slice(2 * MIN_PER_DAY, 3 * MIN_PER_DAY)
+    """4 jam pertama hari sesudah hari tengah belum ada (kurang dari 90% menit)."""
+    nxt = slice(2 * MIN_PER_DAY, 2 * MIN_PER_DAY + NEXT_DAY_FINAL_MIN)
     have = np.count_nonzero(~np.isnan(x3[nxt]) & ~np.isnan(y3[nxt]))
-    return have < MIN_PER_DAY // 2
+    return have < NEXT_DAY_FINAL_MIN * 9 // 10
 
 
 def block_coverage(x3, y3):
@@ -314,9 +320,10 @@ def compute_day(day, raw_dir=None, l9=None):
     ks, _, _ = k_fmi_day(x3, y3, l9)
     coverage = block_coverage(x3, y3)
     missing_next = next_day_missing(x3, y3)
-    # Hari sesudahnya belum tiba = sementara; sudah lewat tapi kosong tidak akan berubah sendiri.
+    # Hari sesudahnya belum tiba = sementara. Berkasnya baru dikirim setelah ditutup (00:00 UTC
+    # lusa), jadi ditunggu sampai akhir lusa; sesudah itu kosong tidak akan berubah sendiri.
     today = datetime.datetime.now(datetime.timezone.utc).date()
-    provisional = missing_next and day + datetime.timedelta(days=1) >= today
+    provisional = missing_next and day + datetime.timedelta(days=2) >= today
     return {
         "tanggal": day,
         "k_values": ks,

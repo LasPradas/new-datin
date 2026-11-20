@@ -165,12 +165,17 @@ def compute_kindex_jyp_task(start=None, end=None):
     return stored
 
 
-@shared_task
-def send_kindex_jyp_telegram_task():
-    """Kirim grafik indeks K & A JYP 7 hari s.d. kemarin (hitung lokal) ke grup Telegram.
+KINDEX_SENT_KEY = 'kindex-jyp-telegram-sent'
 
-    Hari ini masih direkam, jadi grafik berakhir di kemarin (UTC). Citra yang sama
-    disimpan ke cache halaman publik /magnetbumi/indeks-k-a/.
+
+@shared_task
+def send_kindex_jyp_telegram_task(force=False):
+    """Kirim grafik indeks K & A JYP 7 hari (hitung lokal) ke grup Telegram, sekali per hari baru.
+
+    Dijalankan tiap jam. Grafik berakhir di hari terakhir yang nilai K-nya sudah tetap, yaitu
+    setelah server punya 4 jam pertama hari berikutnya (biasanya saat berkas hari itu tiba,
+    sekitar 00:10 UTC lusa). Hari yang sudah dikirim tidak dikirim lagi (`force` untuk ulang).
+    Citra yang sama disimpan ke cache halaman publik /magnetbumi/indeks-k-a/.
     """
     import datetime as _dt
 
@@ -179,11 +184,14 @@ def send_kindex_jyp_telegram_task():
     from .kindex_plot import PNG_CACHE_SECONDS, latest_day, png_cache_key, render_a_png, render_k_png
     from .models import KIndexDaily
 
-    compute_kindex_jyp_task()
-    yesterday = _dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=1)
-    end = latest_day(until=yesterday)
+    end = latest_day()
     if end is None:
         return 'tidak ada data indeks K'
+    sent = cache.get(KINDEX_SENT_KEY)
+    if not force and sent and _dt.date.fromisoformat(sent) >= end:
+        return f'{end} sudah dikirim'
+    if not force and end < _dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=4):
+        return f'{end} terlalu lama, tidak dikirim'   # mis. sesudah LEMI lama mati
     obj = KIndexDaily.objects.get(tanggal=end)
     png_k, png_a = render_k_png(end), render_a_png(end)
     cache.set(png_cache_key('k', end), png_k, PNG_CACHE_SECONDS)
@@ -196,7 +204,9 @@ def send_kindex_jyp_telegram_task():
     ok_k = send_telegram_photo(png_k, f'Indeks-K-JYP-{end:%Y%m%d}.png', caption=caption)
     ok_a = send_telegram_photo(png_a, f'Indeks-A-JYP-{end:%Y%m%d}.png',
                                caption=f'Indeks A harian JYP s.d. {end:%d-%m-%Y}')
-    return f'K terkirim={ok_k}, A terkirim={ok_a}'
+    if ok_k:
+        cache.set(KINDEX_SENT_KEY, end.isoformat(), None)
+    return f'{end}: K terkirim={ok_k}, A terkirim={ok_a}'
 
 
 LEMI_DOWN_KEY = 'lemi-data-down-since'

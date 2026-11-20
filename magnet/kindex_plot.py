@@ -25,27 +25,23 @@ def _tgl(d):
     return f'{d.day} {BULAN[d.month - 1]} {d.year}'
 
 
-# Grafik diterbitkan sekali sehari bersama kiriman Telegram (jadwal send-kindex-jyp-daily).
-# Berkas mentah kemarin ditutup LEMI pukul 00:00 UTC dan dikirim LEMIRawSync dalam ~15 menit,
-# jadi pukul 01:00 UTC data kemarin sudah lengkap.
-POST_HOUR_UTC = 1   # 01:00 UTC = 10:00 WIT
+def is_final(obj):
+    """Nilai K hari itu sudah tetap: ada datanya dan tidak 'Sementara'.
 
-
-def published_until(now=None):
-    """Hari UTC terakhir yang ditampilkan: kemarin, berganti tiap pukul 07:00 UTC.
-
-    Hari ini masih dalam perekaman, jadi tidak pernah ikut digambar. Sebelum jam kirim,
-    grafik tetap berakhir di kemarin lusa supaya citra hanya berganti sekali sehari.
+    'Sementara' hilang setelah server punya 4 jam pertama hari berikutnya (kindex_fmi).
     """
-    now = now or datetime.datetime.now(datetime.timezone.utc)
-    return (now - datetime.timedelta(hours=POST_HOUR_UTC)).date() - datetime.timedelta(days=1)
+    return bool(obj and obj.has_data and 'Sementara' not in (obj.keterangan or ''))
 
 
 def latest_day(until=None):
-    """Tanggal terakhir s.d. `until` (bawaan: published_until()) yang punya nilai K."""
-    until = until or published_until()
+    """Tanggal terakhir s.d. `until` (bawaan: kemarin UTC) yang nilai K-nya sudah tetap.
+
+    Grafik publik & Telegram hanya menampilkan hari yang sudah tetap, jadi citra berganti
+    sekali sehari, saat berkas hari berikutnya tiba di server.
+    """
+    until = until or (datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=1))
     for obj in KIndexDaily.objects.filter(tanggal__lte=until).order_by('-tanggal')[:10]:
-        if obj.has_data:
+        if is_final(obj):
             return obj.tanggal
     return None
 

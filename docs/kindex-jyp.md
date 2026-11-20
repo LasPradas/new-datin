@@ -19,8 +19,12 @@ bergantung pada citra `dataweb.bmkg.go.id` (citra BMKG tetap diambil sebagai pem
 2. **API** `GET/POST /magnet/api/lemi/raw/` (`magnet.views.lemi_raw_api`) menyimpan ke
    `LEMI_RAW_DIR` (default `private_media/lemi_raw/`, tidak dilayani nginx) dan memicu hitung ulang.
 3. **Celery**: `compute-kindex-jyp-hourly` (menit :20) menghitung kemarin lusa s.d. hari ini;
-   `send-kindex-jyp-daily` 10:00 WIT (01:00 UTC, setelah berkas kemarin ditutup dan terkirim)
-   mengirim grafik K & A 7 hari s.d. kemarin (logo BMKG di kiri atas) ke grup Telegram.
+   `send-kindex-jyp-daily` (tiap jam :30) mengirim grafik K & A 7 hari (logo BMKG di kiri atas)
+   ke grup Telegram sekali untuk tiap hari baru yang nilai K-nya sudah tetap.
+   Hari D tetap (tidak "Sementara") setelah server punya 4 jam pertama hari D+1: diuji 25 Okt–18 Nov
+   2026, dengan 1 jam blok 21–24 UTC masih 1–3 K terlalu tinggi, dengan 4 jam tidak ada yang berubah.
+   Karena berkas D+1 baru tiba ~00:10 UTC hari D+2, grafik biasanya berakhir di kemarin lusa dan
+   terkirim sekitar 09:30 WIT. Halaman publik memakai hari akhir yang sama.
 4. Hasil di `KIndexDaily` dengan `sumber='lokal'`; parser citra BMKG tidak menimpanya.
    Hari sebelum `KINDEX_FMI_START` (data Excel stasiun) tidak disentuh.
 

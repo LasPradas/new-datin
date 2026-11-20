@@ -1226,44 +1226,52 @@ class LemiDataAlertTest(TestCase):
 
 
 class KIndexPublishedDayTest(TestCase):
-    """Grafik publik & Telegram berakhir di kemarin (UTC) dan berganti sekali sehari pukul 07:00 UTC."""
+    """Grafik publik & Telegram berakhir di hari terakhir yang nilai K-nya sudah tetap."""
 
     def setUp(self):
         from django.core.cache import cache
         cache.clear()
         self.addCleanup(cache.clear)
 
-    def test_published_until_switches_at_post_hour(self):
-        from .kindex_plot import published_until
-        utc = datetime.timezone.utc
-        fri = datetime.date(2026, 11, 13)
-        thu, wed = fri - datetime.timedelta(days=1), fri - datetime.timedelta(days=2)
-        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 0, 59, tzinfo=utc)), wed)
-        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 1, 0, tzinfo=utc)), thu)
-        self.assertEqual(published_until(datetime.datetime(2026, 11, 13, 23, 59, tzinfo=utc)), thu)
-
-    def test_today_and_unpublished_days_are_not_shown(self):
-        from .kindex_plot import latest_day, published_until
-        until = published_until()
-        for offset in (-1, 0, 1, 2):                     # kemarin lusa .. hari ini (dan esok)
-            KIndexDaily.objects.create(tanggal=until + datetime.timedelta(days=offset),
-                                       k_values=[2] * 8, sumber='lokal')
-        self.assertEqual(latest_day(), until)
+    def test_only_final_days_are_shown(self):
+        from .kindex_plot import latest_day
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        day = lambda n: today - datetime.timedelta(days=n)
+        KIndexDaily.objects.create(tanggal=day(3), k_values=[2] * 8, sumber='lokal')
+        KIndexDaily.objects.create(tanggal=day(2), k_values=[2] * 8, sumber='lokal')
+        KIndexDaily.objects.create(tanggal=day(1), k_values=[2] * 8, sumber='lokal', keterangan='Sementara')
+        KIndexDaily.objects.create(tanggal=day(0), k_values=[2] * 8, sumber='lokal', keterangan='Sementara')
+        self.assertEqual(latest_day(), day(2))
         page = self.client.get(reverse('public_magnetbumi_indices'))
-        self.assertContains(page, f'7 hari s.d. {until:%d} ')
+        self.assertContains(page, f'7 hari s.d. {day(2):%d} ')
         self.assertNotContains(page, 'Pembanding')
 
-    def test_telegram_task_ends_yesterday_and_fills_page_cache(self):
+    def test_next_day_needs_four_hours(self):
+        import numpy as np
+        from .kindex_fmi import MIN_PER_DAY, next_day_missing
+        x = np.zeros(3 * MIN_PER_DAY)
+        x[2 * MIN_PER_DAY + 180:] = np.nan               # hari berikutnya baru 3 jam
+        self.assertTrue(next_day_missing(x, x))
+        x[2 * MIN_PER_DAY:2 * MIN_PER_DAY + 240] = 0
+        self.assertFalse(next_day_missing(x, x))
+
+    def test_telegram_task_sends_each_final_day_once_and_fills_page_cache(self):
         from django.core.cache import cache
         from .kindex_plot import png_cache_key
         from .tasks import send_kindex_jyp_telegram_task
         today = datetime.datetime.now(datetime.timezone.utc).date()
-        yesterday = today - datetime.timedelta(days=1)
-        for day in (yesterday, today):
-            KIndexDaily.objects.create(tanggal=day, k_values=[3] * 8, sumber='lokal')
-        with mock.patch('magnet.tasks.compute_kindex_jyp_task'), \
-             mock.patch('theme.telegram.send_telegram_photo', return_value=True) as send:
+        before, yesterday = today - datetime.timedelta(days=2), today - datetime.timedelta(days=1)
+        KIndexDaily.objects.create(tanggal=before, k_values=[3] * 8, sumber='lokal')
+        y = KIndexDaily.objects.create(tanggal=yesterday, k_values=[3] * 8, sumber='lokal',
+                                       keterangan='Sementara')
+        with mock.patch('theme.telegram.send_telegram_photo', return_value=True) as send:
             send_kindex_jyp_telegram_task()
-        self.assertIn(f'{yesterday:%Y%m%d}', send.call_args_list[0].args[1])
-        self.assertEqual(cache.get(png_cache_key('k', yesterday)), send.call_args_list[0].args[0])
+            self.assertIn(f'{before:%Y%m%d}', send.call_args_list[0].args[1])
+            self.assertEqual(cache.get(png_cache_key('k', before)), send.call_args_list[0].args[0])
+            self.assertEqual(send_kindex_jyp_telegram_task(), f'{before} sudah dikirim')
+            self.assertEqual(send.call_count, 2)
+            y.keterangan = ''                             # 4 jam hari ini sudah tiba
+            y.save()
+            send_kindex_jyp_telegram_task()
+            self.assertIn(f'{yesterday:%Y%m%d}', send.call_args_list[2].args[1])
         self.assertIsNone(cache.get(png_cache_key('k', today)))
