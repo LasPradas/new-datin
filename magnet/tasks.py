@@ -200,7 +200,13 @@ def send_kindex_jyp_telegram_task():
 
 
 LEMI_DOWN_KEY = 'lemi-data-down-since'
-LEMI_STALE_MINUTES = 40          # kirim tiap 15 menit, jadi 40 menit = setidaknya 2 kali luput
+# Watchdog di PC .105 melapor 'ok' tiap 4 menit selama data segar; 40 menit tanpa 'ok' berarti
+# program macet tanpa pulih, PC mati, atau jaringan putus.
+LEMI_STALE_MINUTES = 40
+LEMI_SYNC_DOWN_KEY = 'lemi-raw-sync-down-since'
+# Berkas mentah dikirim setelah ditutup (00:00 UTC atau saat LEMI dimulai ulang), jadi sampel
+# terakhir di server bisa berumur hampir 24 jam. Lewat 26 jam berarti pengiriman macet.
+LEMI_SYNC_STALE_HOURS = 26
 
 
 def latest_lemi_sample(raw_dir):
@@ -225,35 +231,57 @@ def latest_lemi_sample(raw_dir):
 
 @shared_task
 def check_lemi_data_task():
-    """Peringatan Telegram bila data LEMI berhenti masuk: program macet, PC mati, atau jaringan.
+    """Peringatan Telegram untuk LEMI-018, sekali saat bermasalah dan sekali saat pulih.
 
-    Dinilai dari datanya sendiri, jadi "not responding" ikut tertangkap. Sekali saat berhenti
-    dan sekali saat pulih, tidak berulang.
+    1. LEMI hidup? Dinilai dari laporan 'ok' watchdog PC .105 (lemi_watchdog.ps1), yang hanya
+       melapor 'ok' selama datanya segar. Bukan dari data mentah: berkas yang sedang ditulis
+       sengaja tidak dikirim (membukanya membuat lemi018.exe berhenti merekam).
+    2. Pengiriman data mentah (lemi_raw_sync.ps1) jalan? Sampel terakhir di server < 26 jam.
     """
     import datetime as _dt
 
     from django.conf import settings
     from django.core.cache import cache
     from theme.telegram import send_telegram_message
+    from .models import InstrumentStatus
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    fmt = '%d-%m-%Y %H:%M UTC'
+    result = []
+
+    def watch(key, problem, last, problem_msg, ok_msg):
+        down_since = cache.get(key)
+        if problem:
+            if not down_since and send_telegram_message(problem_msg):
+                cache.set(key, last.isoformat(), None)
+            return
+        if down_since and send_telegram_message(ok_msg(_dt.datetime.fromisoformat(down_since))):
+            cache.delete(key)
+
+    ok = (InstrumentStatus.objects.filter(instrument=InstrumentStatus.LEMI, status=InstrumentStatus.STATUS_OK)
+          .order_by('-reported_at').values_list('reported_at', flat=True).first())
+    if ok is None:
+        result.append('belum ada laporan watchdog')
+    else:
+        late = (now - ok).total_seconds() / 60
+        watch(LEMI_DOWN_KEY, late > LEMI_STALE_MINUTES, ok,
+              f'⚠️ <b>LEMI-018 tidak melapor data segar</b>\n'
+              f'Laporan OK terakhir dari watchdog {ok.strftime(fmt)} ({late:.0f} menit lalu).\n'
+              f'Periksa program LEMI di PC 172.21.63.105 (not responding / tertutup), PC, dan jaringan.',
+              lambda since: f'✅ <b>LEMI-018 melapor lagi</b>\n'
+                            f'Berhenti sejak {since.strftime(fmt)}, laporan OK terakhir {ok.strftime(fmt)}.')
+        result.append(f'watchdog terlambat {late:.0f} menit' if late > LEMI_STALE_MINUTES else 'watchdog ok')
 
     last = latest_lemi_sample(settings.LEMI_RAW_DIR)
     if last is None:
-        return 'belum ada data'
-    now = _dt.datetime.now(_dt.timezone.utc)
-    late = (now - last).total_seconds() / 60
-    fmt = '%d-%m-%Y %H:%M UTC'
-    down_since = cache.get(LEMI_DOWN_KEY)
-    if late > LEMI_STALE_MINUTES:
-        if not down_since and send_telegram_message(
-                f'⚠️ <b>Data LEMI-018 berhenti masuk</b>\n'
-                f'Sampel terakhir {last.strftime(fmt)} ({late:.0f} menit lalu).\n'
-                f'Periksa program LEMI di PC 172.21.63.105 (not responding / tertutup), PC, dan jaringan.'):
-            cache.set(LEMI_DOWN_KEY, last.isoformat(), None)
-        return f'terlambat {late:.0f} menit'
-    if down_since:
-        if send_telegram_message(
-                f'✅ <b>Data LEMI-018 masuk lagi</b>\n'
-                f'Berhenti sejak {_dt.datetime.fromisoformat(down_since).strftime(fmt)}, '
-                f'sampel terakhir {last.strftime(fmt)}.'):
-            cache.delete(LEMI_DOWN_KEY)
-    return 'ok'
+        result.append('belum ada data')
+    else:
+        hours = (now - last).total_seconds() / 3600
+        watch(LEMI_SYNC_DOWN_KEY, hours > LEMI_SYNC_STALE_HOURS, last,
+              f'⚠️ <b>Data mentah LEMI-018 tidak terkirim ke server</b>\n'
+              f'Sampel terakhir di server {last.strftime(fmt)} ({hours:.0f} jam lalu).\n'
+              f'Periksa task LEMIRawSync di PC 172.21.63.105 (C:\\lemi_raw_sync\\lemi_raw_sync.log).',
+              lambda since: f'✅ <b>Data mentah LEMI-018 terkirim lagi</b>\n'
+                            f'Berhenti sejak {since.strftime(fmt)}, sampel terakhir {last.strftime(fmt)}.')
+        result.append(f'data mentah terlambat {hours:.0f} jam' if hours > LEMI_SYNC_STALE_HOURS else 'data mentah ok')
+    return ', '.join(result)

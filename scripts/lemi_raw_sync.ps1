@@ -2,9 +2,15 @@
 # LEMI-018 raw data sync → stageof-jayapura.bmkg.go.id (Stasiun Geofisika Jayapura)
 #
 # Runs every 15 minutes on the LEMI PC (172.21.63.105). Asks the server which raw files it
-# already has (/magnet/api/lemi/raw/), then uploads every local file from the last
-# $DAYS days that is missing or larger locally (today's file keeps growing).
-# Missed days are therefore caught up automatically on the next run.
+# already has (/magnet/api/lemi/raw/), then uploads every CLOSED local file from the last
+# $DAYS days that is missing or larger locally. Missed days are caught up on the next run.
+#
+# The file lemi018.exe is writing is never opened: when another process opens it while LEMI
+# writes its next second, lemi018.exe stops logging (watchdog restart, ~6 min lost; ~45 times
+# 2-20 Nov 2026 from the old Copy-Item here, and also with FileShare ReadWrite). That file is
+# the newest name; it is sent after it closes (at 00:00 UTC or when LEMI restarts). Only the
+# folder listing (name/size/time) is read for it, which does not open the file. The site
+# knows LEMI is alive from lemi_watchdog.ps1's status reports, not from this data.
 #
 # Server uses the files to compute the JYP K index itself (FMI method), so Jayapura
 # does not depend on BMKG pusat for it. The rsync to BMKG pusat (upload.bat) is untouched.
@@ -58,8 +64,15 @@ $files = Get-ChildItem -Path $RAW_DIR -File -Filter "*.txt" | Where-Object {
     [datetime]::ParseExact($_.Name.Substring(0, 10), 'yyyy MM dd', $null) -ge $since
 } | Sort-Object Name
 
-$sent = 0; $failed = 0; $skipped = 0
+# Never touch the file LEMI is writing: the newest name, or anything written in the last minutes.
+$all = Get-ChildItem -Path $RAW_DIR -File -Filter "*.txt" |
+    Where-Object { $_.Name -match '^\d{4} \d{2} \d{2} \d{2} \d{2} \d{2}\.txt$' } | Sort-Object Name
+$activeName = if ($all) { @($all)[-1].Name } else { $null }
+$quietSince = (Get-Date).ToUniversalTime().AddMinutes(-3)
+
+$sent = 0; $failed = 0; $skipped = 0; $open = 0
 foreach ($f in $files) {
+    if ($f.Name -eq $activeName -or $f.LastWriteTimeUtc -gt $quietSince) { $open++; continue }
     $remote = $server.PSObject.Properties[$f.Name]
     $remoteSize = if ($remote) { [int64]$remote.Value } else { -1 }
     if ($f.Length -le $remoteSize) { $skipped++; continue }
@@ -68,7 +81,7 @@ foreach ($f in $files) {
         Write-Log "DRY-RUN would send $($f.Name) local=$($f.Length) server=$remoteSize"
         continue
     }
-    # Copy first: LEMI keeps today's file open while writing.
+    # Copy first (closed file only, see above).
     $tmp = Join-Path $env:TEMP $f.Name
     try {
         Copy-Item -LiteralPath $f.FullName -Destination $tmp -Force
@@ -83,5 +96,5 @@ foreach ($f in $files) {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
 }
-Write-Log "Done: sent=$sent failed=$failed up-to-date=$skipped (last $Days days)"
+Write-Log "Done: sent=$sent failed=$failed up-to-date=$skipped still-open=$open (last $Days days)"
 if ($failed -gt 0) { exit 2 }

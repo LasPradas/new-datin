@@ -1146,12 +1146,17 @@ class LemiFlashTest(TestCase):
 
 
 class LemiDataAlertTest(TestCase):
+    """LEMI hidup dinilai dari laporan watchdog; data mentah hanya dicek pengirimannya (26 jam)."""
+
+    KEYS = ('lemi-data-down-since', 'lemi-raw-sync-down-since')
+
     def setUp(self):
         from django.core.cache import cache
         self.raw = tempfile.mkdtemp(prefix='lemi-raw-')
         self.addCleanup(shutil.rmtree, self.raw, True)
-        cache.delete('lemi-data-down-since')
-        self.addCleanup(cache.delete, 'lemi-data-down-since')
+        for key in self.KEYS:
+            cache.delete(key)
+            self.addCleanup(cache.delete, key)
         ctx = override_settings(LEMI_RAW_DIR=self.raw)
         ctx.enable()
         self.addCleanup(ctx.disable)
@@ -1162,27 +1167,62 @@ class LemiDataAlertTest(TestCase):
         with open(os.path.join(self.raw, name), 'w') as fh:
             fh.write(f'{t:%Y %m %d %H %M %S}  35780.00  -1820.00 -14790.00  29.00  28.00 P N FL  93\n')
 
-    def test_alerts_once_when_data_stops_and_once_when_it_returns(self):
-        from .tasks import check_lemi_data_task
-        self._sample(90)
-        with mock.patch('theme.telegram.send_telegram_message', return_value=True) as send:
-            check_lemi_data_task()
-            check_lemi_data_task()
-        self.assertEqual(send.call_count, 1)
-        self.assertIn('berhenti masuk', send.call_args[0][0])
-        self._sample(5)
-        with mock.patch('theme.telegram.send_telegram_message', return_value=True) as send:
-            check_lemi_data_task()
-            check_lemi_data_task()
-        self.assertEqual(send.call_count, 1)
-        self.assertIn('masuk lagi', send.call_args[0][0])
+    def _report(self, minutes_ago, status='ok'):
+        from .models import InstrumentStatus
+        obj = InstrumentStatus.objects.create(instrument='lemi', status=status, computer_name='LEMI-PC')
+        InstrumentStatus.objects.filter(pk=obj.pk).update(
+            reported_at=datetime.datetime.now(UTC) - datetime.timedelta(minutes=minutes_ago))
 
-    def test_no_alert_when_data_is_fresh(self):
+    def _run(self, times=2):
         from .tasks import check_lemi_data_task
-        self._sample(5)
         with mock.patch('theme.telegram.send_telegram_message', return_value=True) as send:
-            check_lemi_data_task()
+            for _ in range(times):
+                result = check_lemi_data_task()
+        return send, result
+
+    def test_closed_files_only_is_not_an_alert(self):
+        # Berkas yang sedang ditulis tidak dikirim: sampel terakhir di server berjam-jam lalu itu normal.
+        self._sample(20 * 60)
+        self._report(3)
+        send, result = self._run()
         send.assert_not_called()
+        self.assertEqual(result, 'watchdog ok, data mentah ok')
+
+    def test_alerts_once_when_watchdog_stops_and_once_when_it_returns(self):
+        self._sample(60)
+        self._report(90)
+        send, _ = self._run()
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('tidak melapor data segar', send.call_args[0][0])
+        self._report(2)
+        send, _ = self._run()
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('melapor lagi', send.call_args[0][0])
+
+    def test_not_ok_reports_do_not_count_as_alive(self):
+        self._sample(60)
+        self._report(90)
+        self._report(1, status='not_responding')
+        send, result = self._run(1)
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('watchdog terlambat', result)
+
+    def test_alerts_when_raw_sync_stops(self):
+        self._sample(27 * 60)
+        self._report(3)
+        send, result = self._run()
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('tidak terkirim ke server', send.call_args[0][0])
+        self._sample(10)
+        send, _ = self._run()
+        self.assertEqual(send.call_count, 1)
+        self.assertIn('terkirim lagi', send.call_args[0][0])
+
+    def test_no_reports_yet(self):
+        self._sample(5)
+        send, result = self._run(1)
+        send.assert_not_called()
+        self.assertEqual(result, 'belum ada laporan watchdog, data mentah ok')
 
 
 class KIndexPublishedDayTest(TestCase):

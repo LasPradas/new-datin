@@ -9,6 +9,12 @@ bergantung pada citra `dataweb.bmkg.go.id` (citra BMKG tetap diambil sebagai pem
    `C:\lemi_raw_sync\lemi_raw_sync.ps1` (salinan `scripts/lemi_raw_sync.ps1`). Skrip menanyakan
    daftar berkas server lalu mengirim berkas `D:\lemi018\YYYY MM DD hh mm ss.txt` 30 hari terakhir
    yang belum ada / lebih kecil di server. Hari yang terlewat otomatis disusul.
+   **Berkas yang sedang ditulis `lemi018.exe` tidak pernah dibuka** (nama terbaru, atau diubah < 3 menit
+   lalu): bila proses lain membukanya saat LEMI menulis detik berikutnya, program berhenti merekam
+   (watchdog restart, ±6 menit hilang). `Copy-Item` lama di skrip ini menyebabkan ±45 kali macet
+   2–20 Nov 2026, dan membaca dengan `FileShare ReadWrite` pun ternyata tetap bisa memicunya. Jadi data
+   tiba di server setelah berkasnya ditutup (00:00 UTC atau saat LEMI dimulai ulang); indeks K hari ini
+   di server baru lengkap esok harinya.
    Token = `LEMI_MONITOR_TOKEN` (berkas `C:\lemi_raw_sync\token.txt`, tidak di repo).
 2. **API** `GET/POST /magnet/api/lemi/raw/` (`magnet.views.lemi_raw_api`) menyimpan ke
    `LEMI_RAW_DIR` (default `private_media/lemi_raw/`, tidak dilayani nginx) dan memicu hitung ulang.
@@ -40,8 +46,10 @@ yang terganggu loncatan baseline): bias ≈ 0, 99 % selisih ≤ 1, korelasi deng
 - **Pemulihan dari kartu CF**: LEMI berjalan Flash+PC, jadi saat program macet logger tetap merekam.
   Salin `L018_*.B81` dari kartu, lalu `python manage.py import_lemi_flash /path/L018_*.B81 --dry-run`
   dan ulangi tanpa `--dry-run`. Hanya detik yang hilang yang ditulis, ke berkas baru.
-- **Peringatan**: `check_lemi_data_task` (tiap 15 menit) mengirim Telegram bila sampel terakhir
-  lebih tua dari 40 menit, dan sekali lagi saat pulih.
+- **Peringatan**: `check_lemi_data_task` (tiap 15 menit) mengirim Telegram sekali saat bermasalah
+  dan sekali saat pulih, untuk dua hal: (1) tidak ada laporan `ok` dari watchdog PC .105 selama
+  40 menit (program macet tanpa pulih, PC mati, atau jaringan); (2) sampel terakhir di server lebih
+  tua dari 26 jam (pengiriman `LEMIRawSync` macet).
 
 ## Mengisi hari kosong sebelum `KINDEX_FMI_START`
 
