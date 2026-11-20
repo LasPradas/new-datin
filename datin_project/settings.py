@@ -343,7 +343,7 @@ CELERY_BEAT_SCHEDULE = {
     'send-kindex-jyp-daily': {
         'task': 'magnet.tasks.send_kindex_jyp_telegram_task',
         # Tiap jam :30; kirim sekali saat ada hari baru yang nilai K-nya tetap (4 jam hari
-        # berikutnya sudah di server, biasanya ~00:10 UTC = 09:10 WIT lusa).
+        # berikutnya sudah di server: kemarin terkirim ~04:30 UTC = 13:30 WIT).
         'schedule': crontab(minute=30),
     },
     # Pembanding: citra BMKG pusat (dataweb.bmkg.go.id) tetap disimpan, tidak dikirim ke Telegram.

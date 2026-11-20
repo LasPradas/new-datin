@@ -173,8 +173,8 @@ def send_kindex_jyp_telegram_task(force=False):
     """Kirim grafik indeks K & A JYP 7 hari (hitung lokal) ke grup Telegram, sekali per hari baru.
 
     Dijalankan tiap jam. Grafik berakhir di hari terakhir yang nilai K-nya sudah tetap, yaitu
-    setelah server punya 4 jam pertama hari berikutnya (biasanya saat berkas hari itu tiba,
-    sekitar 00:10 UTC lusa). Hari yang sudah dikirim tidak dikirim lagi (`force` untuk ulang).
+    setelah server punya 4 jam pertama hari berikutnya (biasanya sekitar 04:30 UTC = 13:30 WIT,
+    dari salinan upload.bat yang dikirim LEMIRawSync). Hari yang sudah dikirim tidak dikirim lagi (`force` untuk ulang).
     Citra yang sama disimpan ke cache halaman publik /magnetbumi/indeks-k-a/.
     """
     import datetime as _dt

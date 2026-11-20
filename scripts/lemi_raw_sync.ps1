@@ -8,9 +8,12 @@
 # The file lemi018.exe is writing is never opened: when another process opens it while LEMI
 # writes its next second, lemi018.exe stops logging (watchdog restart, ~6 min lost; ~45 times
 # 2-20 Nov 2026 from the old Copy-Item here, and also with FileShare ReadWrite). That file is
-# the newest name; it is sent after it closes (at 00:00 UTC or when LEMI restarts). Only the
-# folder listing (name/size/time) is read for it, which does not open the file. The site
-# knows LEMI is alive from lemi_watchdog.ps1's status reports, not from this data.
+# the newest name; only the folder listing (name/size/time) is read for it.
+# Its data so far is sent from the copy BMKG's upload.bat (task sync_mgnet, every 15 min) already
+# makes with gawk in D:\DATABASE\yyyy\mm\raw\jayapura_lemi_raw_yyyymmdd.txt (gawk's read has not
+# hung LEMI since 2023). The copy is sent under the active file's name when its first line matches
+# that name; the real file replaces it on the server once LEMI closes it (00:00 UTC or restart).
+# The server needs the first 4 hours of today to make yesterday's K index final.
 #
 # Server uses the files to compute the JYP K index itself (FMI method), so Jayapura
 # does not depend on BMKG pusat for it. The rsync to BMKG pusat (upload.bat) is untouched.
@@ -30,6 +33,7 @@ param(
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 $API_URL   = "https://stageof-jayapura.bmkg.go.id/magnet/api/lemi/raw/"
 $RAW_DIR   = "D:\lemi018"
+$DB_DIR    = "D:\DATABASE"   # upload.bat's copies (BMKG pusat rsync)
 $TOKEN     = (Get-Content "$PSScriptRoot\token.txt" -Raw).Trim()
 $LOG_FILE  = "$PSScriptRoot\lemi_raw_sync.log"
 $CURL      = "$env:SystemRoot\System32\curl.exe"
@@ -96,5 +100,42 @@ foreach ($f in $files) {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
 }
-Write-Log "Done: sent=$sent failed=$failed up-to-date=$skipped still-open=$open (last $Days days)"
-if ($failed -gt 0) { exit 2 }
+
+# The active file's data so far, from upload.bat's copy (never from LEMI's own file).
+$partial = 'none'
+if ($activeName -and -not $DryRun) {
+    $base = $activeName.Substring(0, 19)                                  # "yyyy MM dd HH mm ss"
+    $copy = Join-Path $DB_DIR ("{0}\{1}\raw\jayapura_lemi_raw_{0}{1}{2}.txt" -f `
+        $base.Substring(0, 4), $base.Substring(5, 2), $base.Substring(8, 2))
+    $remote = $server.PSObject.Properties[$activeName]
+    $remoteSize = if ($remote) { [int64]$remote.Value } else { -1 }
+    if (-not (Test-Path -LiteralPath $copy)) {
+        $partial = 'no copy yet'
+    } else {
+        $c = Get-Item -LiteralPath $copy
+        $first = Get-Content -LiteralPath $copy -TotalCount 1
+        if ($c.LastWriteTimeUtc -gt (Get-Date).ToUniversalTime().AddMinutes(-1)) {
+            $partial = 'copy being written'
+        } elseif (-not $first -or -not $first.StartsWith($base)) {
+            $partial = "copy is another file ($first)"
+        } elseif ($c.Length -le $remoteSize) {
+            $partial = 'up-to-date'
+        } else {
+            $tmp = Join-Path $env:TEMP $activeName
+            try {
+                Copy-Item -LiteralPath $copy -Destination $tmp -Force
+                $resp = & $CURL -s -f --max-time 300 --resolve $RESOLVE -H "Authorization: Bearer $TOKEN" -F "file=@$tmp" $API_URL
+                if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" }
+                Write-Log "OK   $activeName (partial, from upload.bat copy) $($c.Length) bytes $resp"
+                $partial = 'sent'
+            } catch {
+                Write-Log "ERR  $activeName partial: $_"
+                $partial = 'failed'
+            } finally {
+                Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+Write-Log "Done: sent=$sent failed=$failed up-to-date=$skipped still-open=$open partial=$partial (last $Days days)"
+if ($failed -gt 0 -or $partial -eq 'failed') { exit 2 }

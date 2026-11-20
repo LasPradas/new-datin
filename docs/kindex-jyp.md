@@ -12,9 +12,13 @@ bergantung pada citra `dataweb.bmkg.go.id` (citra BMKG tetap diambil sebagai pem
    **Berkas yang sedang ditulis `lemi018.exe` tidak pernah dibuka** (nama terbaru, atau diubah < 3 menit
    lalu): bila proses lain membukanya saat LEMI menulis detik berikutnya, program berhenti merekam
    (watchdog restart, ±6 menit hilang). `Copy-Item` lama di skrip ini menyebabkan ±45 kali macet
-   2–20 Nov 2026, dan membaca dengan `FileShare ReadWrite` pun ternyata tetap bisa memicunya. Jadi data
-   tiba di server setelah berkasnya ditutup (00:00 UTC atau saat LEMI dimulai ulang); indeks K hari ini
-   di server baru lengkap esok harinya.
+   2–20 Nov 2026, dan membaca dengan `FileShare ReadWrite` pun ternyata tetap bisa memicunya. Isi berkas aktif
+   dikirim dari salinan yang sudah dibuat `D:\sync_data\upload.bat` (task `sync_mgnet` BMKG pusat, tiap
+   15 menit, `gawk "{print $0}"` ke `D:\DATABASE\yyyy\mm\raw\jayapura_lemi_raw_yyyymmdd.txt`; bacaan gawk
+   ini tidak pernah memacetkan LEMI sejak 2023). Salinan dikirim dengan nama berkas aktif bila baris
+   pertamanya cocok dengan nama itu dan sudah > 1 menit tidak ditulis; berkas asli menggantikannya di
+   server setelah ditutup (00:00 UTC atau saat LEMI dimulai ulang). Data hari berjalan di server
+   tertinggal ±15–30 menit.
    Token = `LEMI_MONITOR_TOKEN` (berkas `C:\lemi_raw_sync\token.txt`, tidak di repo).
 2. **API** `GET/POST /magnet/api/lemi/raw/` (`magnet.views.lemi_raw_api`) menyimpan ke
    `LEMI_RAW_DIR` (default `private_media/lemi_raw/`, tidak dilayani nginx) dan memicu hitung ulang.
@@ -23,8 +27,8 @@ bergantung pada citra `dataweb.bmkg.go.id` (citra BMKG tetap diambil sebagai pem
    ke grup Telegram sekali untuk tiap hari baru yang nilai K-nya sudah tetap.
    Hari D tetap (tidak "Sementara") setelah server punya 4 jam pertama hari D+1: diuji 25 Okt–18 Nov
    2026, dengan 1 jam blok 21–24 UTC masih 1–3 K terlalu tinggi, dengan 4 jam tidak ada yang berubah.
-   Karena berkas D+1 baru tiba ~00:10 UTC hari D+2, grafik biasanya berakhir di kemarin lusa dan
-   terkirim sekitar 09:30 WIT. Halaman publik memakai hari akhir yang sama.
+   Data hari berjalan dikirim LEMIRawSync dari salinan upload.bat (D:\DATABASE, lihat butir 1), jadi
+   grafik s.d. kemarin terkirim sekitar 04:30 UTC (13:30 WIT). Halaman publik memakai hari akhir yang sama.
 4. Hasil di `KIndexDaily` dengan `sumber='lokal'`; parser citra BMKG tidak menimpanya.
    Hari sebelum `KINDEX_FMI_START` (data Excel stasiun) tidak disentuh.
 
